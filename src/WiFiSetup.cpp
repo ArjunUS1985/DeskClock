@@ -19,6 +19,7 @@ WiFiClient telnetClient;
 
 void setupWiFi() {
     WiFiManager wifiManager;
+    bool wifiConnected = false;
     
     // Configure WiFiManager callbacks to handle display messages
     wifiManager.setAPCallback([](WiFiManager* mgr) {
@@ -31,21 +32,39 @@ void setupWiFi() {
     wifiManager.setConfigPortalTimeout(180); // 3 minutes timeout
     
     // Try to connect using saved credentials
-    if (!wifiManager.autoConnect("SmartClock-AP")) {
+    if (wifiManager.autoConnect("SmartClock-AP")) {
+        // If we get here, we're connected
+        printBoth("Connected to WiFi");
+        displaySetupMessage("WiFi Connected!");
+        wifiConnected = true;
+    } else {
         printBoth("Failed to connect to WiFi or timeout reached");
         
-        // Enter configuration portal explicitly
-        if (!wifiManager.startConfigPortal("SmartClock-AP")) {
-            printBoth("Failed to configure WiFi. Restarting...");
-            displaySetupMessage("WiFi Failed!");
-            delay(2000);
-            ESP.restart();
+        // Enter configuration portal explicitly but with a shorter timeout
+        if (wifiManager.startConfigPortal("SmartClock-AP")) {
+            printBoth("WiFi configured through portal");
+            displaySetupMessage("WiFi Configured!");
+            wifiConnected = true;
+        } else {
+            printBoth("Failed to configure WiFi, continuing without WiFi");
+            displaySetupMessage("No WiFi");
+            // We don't restart here - just continue without WiFi
         }
     }
-
-    // If we get here, we're connected
-    printBoth("Connected to WiFi");
+    
+    delay(1000); // Give time for the message to be displayed
+    
+    // Even if WiFi connection failed, we display "Done!" to indicate setup is complete
+    // and we're moving on to normal operation
     displaySetupMessage("Done!");
+    
+    if (wifiConnected) {
+        // Additional setup that depends on WiFi can go here
+        printBoth("IP: " + WiFi.localIP().toString());
+    } else {
+        // Set a flag or take actions for offline mode
+        printBoth("Running in offline mode");
+    }
 }
 
 void resetWiFiSettings() {

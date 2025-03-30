@@ -20,9 +20,9 @@ uint8_t currentDisplay = 0;  // 0 = time, 1 = date, 2 = temp, 3 = humidity
 
 #define LDR_PIN A0  // Analog pin for LDR
 #define BRIGHTNESS_CHECK_INTERVAL 1000  // Check brightness every 1 second
-#define MIN_ANALOG_VALUE 0    // Minimum analog reading (darkness)
+#define MIN_ANALOG_VALUE 10    // Minimum analog reading (darkness)
 #define MAX_ANALOG_VALUE 1024 // Maximum analog reading (brightness)
-#define MIN_INTENSITY 0       // Minimum display intensity
+#define MIN_INTENSITY -2       // Minimum display intensity
 #define MAX_INTENSITY 15       // Reduced maximum intensity for better night viewing
 //#define SMOOTHING_FACTOR 0.3  // How much weight to give to new readings (0-1)
 
@@ -123,25 +123,31 @@ void displaySetupMessage(const char* message) {
 }
 
 void abnormalLoop() {
+    // More comprehensive messages to help users connect
     const char* messages[] = {
-        "Join SmartClock-AP",
-        "Add WiFi info..."
+        "Join WiFi Network",
+        "SmartClock-AP",
+        "Open browser",
+        "IP: 192.168.4.1"
     };
     int currentMessage = 0;
     unsigned long lastChange = 0;
-    const unsigned long MESSAGE_INTERVAL = 3000; // Switch message every 3 seconds
+    const unsigned long MESSAGE_INTERVAL = 2500; // Switch message every 2.5 seconds
 
     while (true) {
         ArduinoOTA.handle();
-        server.handleClient(); // Add web server handling to allow AP config page to work
+        server.handleClient(); // Handle web server requests in AP mode
         
         // Switch messages periodically
         unsigned long currentMillis = millis();
         if (currentMillis - lastChange >= MESSAGE_INTERVAL) {
             displaySetupMessage(messages[currentMessage]);
-            currentMessage = (currentMessage + 1) % 2;
+            currentMessage = (currentMessage + 1) % 4; // Cycle through all 4 messages
             lastChange = currentMillis;
         }
+        
+        // Handle reset button during AP mode too
+        checkResetButton();
         
         setupDisplay.displayAnimate();
         delay(10);
@@ -207,8 +213,12 @@ void updateBrightness() {
     if (displayConfig.auto_brightness) {
         // Read the LDR value
         int ldrValue = analogRead(LDR_PIN);
+       
+        // Print LDR value for debugging
+        printBoth(("LDR Value: " + String(ldrValue)).c_str());
         int mappedBrightness = map(ldrValue, MIN_ANALOG_VALUE, MAX_ANALOG_VALUE, 
           displayConfig.max_brightness, displayConfig.min_brightness);
+          printBoth(("LDR Mapped: " +String(mappedBrightness)).c_str());
 // Map LDR value to the user-configured brightness range
         
 
@@ -219,7 +229,7 @@ void updateBrightness() {
       
         
         // Only update if the intensity has changed
-        if (abs(mappedBrightness - lastSetIntensity) > 0) {
+        if (abs(mappedBrightness - lastSetIntensity) > 1) {
             lastSetIntensity = mappedBrightness;
           
            
@@ -238,6 +248,8 @@ void updateBrightness() {
 
         //myDisplay.setIntensity(mappedBrightness);
         timeDisplay.setIntensity(mappedBrightness);
+
+        printBoth(String(mappedBrightness).c_str());
         //myDisplay.displaySuspend(true);
         //timeDisplay.displaySuspend(true);
        
@@ -279,14 +291,26 @@ void setup() {
     // Main display for clock (uses custom font)
     myDisplay.begin();
     myDisplay.setIntensity(0);
-    myDisplay.setFont(newFont2);
-    myDisplay.displayClear();
+    myDisplay.setFont(newFont);
+   myDisplay.displayClear();
+    
+    // Apply vertical flip to the main display
+    for (uint8_t i = 0; i < MAX_DEVICES; i++) {
+        myDisplay.setZoneEffect(0,true,PA_FLIP_UD);
+        myDisplay.setZoneEffect(0,true,PA_FLIP_LR);
+    }
 
     // Initialize dedicated time display
     timeDisplay.begin();
     timeDisplay.setIntensity(0);
     timeDisplay.setFont(newFont);
     timeDisplay.displayClear();
+    
+    // Apply vertical flip to the time display if needed
+    // Uncomment the next 3 lines if you want the time display flipped too
+    // for (uint8_t i = 0; i < MAX_DEVICES; i++) {
+    //     timeDisplay.getZoneDevice(0)->getGraphicDevice()->setTransform(MD_MAX72XX::TFUD);
+    // }
 
     // Initialize SPIFFS
     if (!LittleFS.begin()) {
@@ -316,7 +340,7 @@ void setup() {
     setupTelnet();
 
     // Setup OTA
-    ArduinoOTA.setHostname("DeskClock");
+    ArduinoOTA.setHostname(deviceConfig.hostname);
     ArduinoOTA.onStart([]() {
         setupDisplay.displayClear();
         setupDisplay.displayText("OTA", PA_CENTER, 0, 0, PA_NO_EFFECT, PA_NO_EFFECT);
@@ -364,6 +388,7 @@ void setup() {
     loadMQTTConfig();
     loadTimeConfig();
     loadDisplayConfig();
+    loadDeviceConfig(); // Load device configuration including hostname
     updateDisplaySequence();
     
     setupTime();
@@ -376,6 +401,7 @@ void setup() {
 
 void loop() {
     ArduinoOTA.handle();  // Handle OTA updates
+    MDNS.update();        // Handle mDNS updates
     server.handleClient();  // Handle web server requests
     handleTelnet();        // Handle telnet connections
     syncTimeIfNeeded();
@@ -462,8 +488,8 @@ void loop() {
               }
               case 2: { // Temperature
                     char tempStr[9];
-                    snprintf(tempStr, sizeof(tempStr), "T %.1f%c", lastTemp, displayConfig.use_celsius ? 'C' : 'F');
-                    myDisplay.displayText(tempStr, PA_CENTER, 25, 0, PA_NO_EFFECT, PA_NO_EFFECT);
+                    snprintf(tempStr, sizeof(tempStr), "%.1f%c", lastTemp, displayConfig.use_celsius ? 'C' : 'F');
+                  myDisplay.displayText(tempStr, PA_CENTER, 25, 0, PA_NO_EFFECT, PA_NO_EFFECT);
                  while (!myDisplay.displayAnimate()) {
                        delay(10);
                     }
@@ -471,7 +497,7 @@ void loop() {
                 }
                 case 3: { // Humidity
                     char humStr[9];
-                    snprintf(humStr, sizeof(humStr), "H %.1f%%", lastHumidity);
+                    snprintf(humStr, sizeof(humStr), "%.1f%%", lastHumidity);
                     myDisplay.displayText(humStr, PA_CENTER, 25, 0, PA_NO_EFFECT, PA_NO_EFFECT);
                    while (!myDisplay.displayAnimate()) {
                         delay(10);

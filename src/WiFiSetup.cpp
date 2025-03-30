@@ -1,10 +1,12 @@
 #include "WiFiSetup.h"
 #include <PubSubClient.h>
+#include <ESP8266mDNS.h>
 
 // Define the global configs
 MQTTConfig mqttConfig;
 TimeConfig timeConfig;
 DisplayConfig displayConfig;
+DeviceConfig deviceConfig;  // Add DeviceConfig variable
 
 // Declare the mqttCallback function
 void mqttCallback(char* topic, byte* payload, unsigned int length);
@@ -24,12 +26,19 @@ void setupWiFi() {
     // Configure WiFiManager callbacks to handle display messages
     wifiManager.setAPCallback([](WiFiManager* mgr) {
         printBoth("Entered config mode");
-        printBoth(String("AP IP address: ") + WiFi.softAPIP().toString());
-        displaySetupMessage("Join SmartClock-AP");
+        String apIP = WiFi.softAPIP().toString();
+        printBoth("AP IP address: " + apIP);
+        
+        // Display the AP name and IP on the LED display
+        displaySetupMessage("Join: SmartClock-AP");
+        delay(2000);
+        displaySetupMessage(("IP: " + apIP).c_str());
+        delay(2000);
+        displaySetupMessage("To configure");
     });
     
     // Set custom AP mode timeout
-    wifiManager.setConfigPortalTimeout(180); // 3 minutes timeout
+    wifiManager.setConfigPortalTimeout(300); // 5 minutes timeout for better user experience
     
     // Try to connect using saved credentials
     if (wifiManager.autoConnect("SmartClock-AP")) {
@@ -54,17 +63,36 @@ void setupWiFi() {
     
     delay(1000); // Give time for the message to be displayed
     
-    // Even if WiFi connection failed, we display "Done!" to indicate setup is complete
-    // and we're moving on to normal operation
-    displaySetupMessage("Done!");
-    
     if (wifiConnected) {
         // Additional setup that depends on WiFi can go here
-        printBoth("IP: " + WiFi.localIP().toString());
+        String localIP = WiFi.localIP().toString();
+        printBoth("IP: " + localIP);
+        
+        // Display IP address on the LED display
+       // displaySetupMessage("IP:" + localIP);
+        //delay(2000);
+        
+        // Set up mDNS responder with the hostname
+        loadDeviceConfig(); // Make sure hostname is loaded
+        if (MDNS.begin(deviceConfig.hostname)) {
+            // Add service to mDNS
+            MDNS.addService("http", "tcp", 80);  // Web server on port 80
+            MDNS.addService("telnet", "tcp", 23); // Telnet on port 23
+            printBothf("mDNS responder started: %s.local", deviceConfig.hostname);
+            
+            // Show the hostname.local address
+            displaySetupMessage((String(deviceConfig.hostname) + ".local").c_str());
+            delay(2000);
+        } else {
+            printBoth("Error setting up mDNS responder");
+        }
     } else {
         // Set a flag or take actions for offline mode
         printBoth("Running in offline mode");
     }
+    
+    // Final message to indicate we're done with setup
+    displaySetupMessage("Ready!");
 }
 
 void resetWiFiSettings() {
@@ -87,6 +115,11 @@ void resetWiFiSettings() {
         if (LittleFS.exists("/display_config.json")) {
             LittleFS.remove("/display_config.json");
             printBoth("Display configuration cleared");
+        }
+        
+        if (LittleFS.exists("/device_config.json")) {
+            LittleFS.remove("/device_config.json");
+            printBoth("Device configuration cleared");
         }
         
         // Also remove any HTML template files that might have been created
@@ -125,6 +158,10 @@ void setDefaultTimeConfig() {
 
 void setDefaultDisplayConfig() {
     displayConfig = DisplayConfig(); // This will use constructor's default values
+}
+
+void setDefaultDeviceConfig() {
+    deviceConfig = DeviceConfig(); // Use the constructor's default values ("DeskClock")
 }
 
 void loadMQTTConfig() {
@@ -257,6 +294,44 @@ void loadDisplayConfig() {
         displayConfig.man_brightness);
 }
 
+void loadDeviceConfig() {
+    if (!LittleFS.begin()) {
+        printBoth("Failed to mount file system");
+        setDefaultDeviceConfig();
+        return;
+    }
+
+    if (!LittleFS.exists("/device_config.json")) {
+        printBoth("No device config file found");
+        setDefaultDeviceConfig();
+        return;
+    }
+
+    File configFile = LittleFS.open("/device_config.json", "r");
+    if (!configFile) {
+        printBoth("Failed to open device config file");
+        setDefaultDeviceConfig();
+        return;
+    }
+
+    StaticJsonDocument<200> doc;
+    DeserializationError error = deserializeJson(doc, configFile);
+    configFile.close();
+
+    if (error) {
+        printBoth("Failed to parse device config file");
+        setDefaultDeviceConfig();
+        return;
+    }
+
+    if (doc.containsKey("hostname")) {
+        strncpy(deviceConfig.hostname, doc["hostname"], sizeof(deviceConfig.hostname) - 1);
+        printBothf("Loaded hostname: %s", deviceConfig.hostname);
+    } else {
+        setDefaultDeviceConfig();
+    }
+}
+
 void saveMQTTConfig() {
     if (!LittleFS.begin()) {
         printBoth("Failed to mount file system");
@@ -301,6 +376,7 @@ void saveTimeConfig() {
         printBoth("Failed to write time config file");
     }
     configFile.close();
+  
 }
 
 void saveDisplayConfig() {
@@ -332,6 +408,31 @@ void saveDisplayConfig() {
     configFile.close();
     
     printBoth("Display config saved");
+}
+
+void saveDeviceConfig() {
+    if (!LittleFS.begin()) {
+        printBoth("Failed to mount file system");
+        return;
+    }
+
+    StaticJsonDocument<200> doc;
+    doc["hostname"] = deviceConfig.hostname;
+
+    File configFile = LittleFS.open("/device_config.json", "w");
+    if (!configFile) {
+        printBoth("Failed to open device config file for writing");
+        return;
+    }
+
+    if (serializeJson(doc, configFile) == 0) {
+        printBoth("Failed to write device config file");
+    }
+    configFile.close();
+    
+    printBothf("Device config saved - hostname: %s", deviceConfig.hostname);
+    //restart esp 
+    ESP.restart();
 }
 
 void handleRoot() {
@@ -399,6 +500,17 @@ void handleRoot() {
 <body>
     <h1>Device Configuration</h1>
     <div class='status'>IP Address: )" + WiFi.localIP().toString() + R"(</div>
+    
+    <!-- Device Settings -->
+    <form action='/save' method='POST'>
+        <h2>Device Settings</h2>
+        <div class='form-group'>
+            <label for='hostname'>Hostname:</label>
+            <input type='text' id='hostname' name='hostname' value=')" + String(deviceConfig.hostname) + R"(' maxlength='31'>
+            <small style="display: block; margin-top: 5px; color: #666;">The hostname is used to identify this device on your network (used for MQTT and OTA)</small>
+        </div>
+        <input type='submit' value='Save Device Settings'>
+    </form>
     
     <!-- Display Settings -->
     <form action='/save' method='POST'>
@@ -545,6 +657,23 @@ void handleSave() {
     bool configChanged = false;
     bool displayChanged = false;
     bool mqttChanged = false;
+    bool deviceChanged = false;
+    
+    // Handle device settings
+    if (server.hasArg("hostname")) {
+        // Make sure the hostname isn't empty and doesn't exceed limit
+        String hostname = server.arg("hostname");
+        if (hostname.length() > 0) {
+            strncpy(deviceConfig.hostname, hostname.c_str(), sizeof(deviceConfig.hostname) - 1);
+            deviceChanged = true;
+            printBothf("Hostname changed to: %s", deviceConfig.hostname);
+        }
+    }
+    
+    if (deviceChanged) {
+        saveDeviceConfig();
+        configChanged = true;
+    }
     
     // Handle display settings
     if (server.hasArg("time_format")) {
@@ -807,19 +936,19 @@ void setupMQTT() {
     mqttClient.setServer(mqttConfig.mqtt_server, mqttConfig.mqtt_port);
     mqttClient.setCallback(mqttCallback);
     
-    printBoth("Attempting to connect to MQTT broker...");
-    if (mqttClient.connect("DeskClock", mqttConfig.mqtt_user, mqttConfig.mqtt_password)) {
+    printBothf("Attempting to connect to MQTT broker as %s...", deviceConfig.hostname);
+    if (mqttClient.connect(deviceConfig.hostname, mqttConfig.mqtt_user, mqttConfig.mqtt_password)) {
         printBoth("MQTT Connected Successfully");
         
         // Publish discovery configs for temperature sensor
-        String tempConfig = "{\"name\":\"DeskClock Temperature\",\"device_class\":\"temperature\",\"state_topic\":\"homeassistant/sensor/deskclock/temperature/state\",\"unit_of_measurement\":\"°C\",\"unique_id\":\"deskclock_temp\"}";
-        mqttClient.publish("homeassistant/sensor/deskclock/temperature/config", tempConfig.c_str(), true);
+        String tempConfig = "{\"name\":\"" + String(deviceConfig.hostname) + " Temperature\",\"device_class\":\"temperature\",\"state_topic\":\"homeassistant/sensor/" + String(deviceConfig.hostname) + "/temperature/state\",\"unit_of_measurement\":\"°C\",\"unique_id\":\"" + String(deviceConfig.hostname) + "_temp\"}";
+        mqttClient.publish(("homeassistant/sensor/" + String(deviceConfig.hostname) + "/temperature/config").c_str(), tempConfig.c_str(), true);
         
         // Publish discovery configs for humidity sensor
-        String humConfig = "{\"name\":\"DeskClock Humidity\",\"device_class\":\"humidity\",\"state_topic\":\"homeassistant/sensor/deskclock/humidity/state\",\"unit_of_measurement\":\"%\",\"unique_id\":\"deskclock_humidity\"}";
-        mqttClient.publish("homeassistant/sensor/deskclock/humidity/config", humConfig.c_str(), true);
+        String humConfig = "{\"name\":\"" + String(deviceConfig.hostname) + " Humidity\",\"device_class\":\"humidity\",\"state_topic\":\"homeassistant/sensor/" + String(deviceConfig.hostname) + "/humidity/state\",\"unit_of_measurement\":\"%\",\"unique_id\":\"" + String(deviceConfig.hostname) + "_humidity\"}";
+        mqttClient.publish(("homeassistant/sensor/" + String(deviceConfig.hostname) + "/humidity/config").c_str(), humConfig.c_str(), true);
         
-        mqttClient.subscribe("homeassistant/deskclock/command");
+        mqttClient.subscribe(("homeassistant/" + String(deviceConfig.hostname) + "/command").c_str());
     } else {
         int state = mqttClient.state();
         String errorMsg = "Initial MQTT connection failed, state: ";
@@ -864,10 +993,10 @@ void reconnectMQTT() {
     }
 
     // Try to connect once (non-blocking approach)
-    printBoth("Attempting MQTT connection...");
-    if (mqttClient.connect("DeskClock", mqttConfig.mqtt_user, mqttConfig.mqtt_password)) {
+    printBothf("Attempting MQTT connection as %s...", deviceConfig.hostname);
+    if (mqttClient.connect(deviceConfig.hostname, mqttConfig.mqtt_user, mqttConfig.mqtt_password)) {
         printBoth("Connected to MQTT broker");
-        mqttClient.subscribe("homeassistant/deskclock/command");
+        mqttClient.subscribe(("homeassistant/" + String(deviceConfig.hostname) + "/command").c_str());
     } else {
         int state = mqttClient.state();
         String errorMsg = "Connection failed, state: ";
@@ -897,7 +1026,7 @@ void publishMQTTData(float temperature, float humidity) {
     // Only try to reconnect once, don't loop
     if (!mqttClient.connected()) {
         printBoth("MQTT disconnected, attempting to reconnect...");
-        if (mqttClient.connect("DeskClock", mqttConfig.mqtt_user, mqttConfig.mqtt_password)) {
+        if (mqttClient.connect(deviceConfig.hostname, mqttConfig.mqtt_user, mqttConfig.mqtt_password)) {
             printBoth("connected");
         } else {
             printBoth("failed");
@@ -908,14 +1037,14 @@ void publishMQTTData(float temperature, float humidity) {
     // Single MQTT loop call
     mqttClient.loop();
 
-    // Publish temperature and humidity to state topics
+    // Publish temperature and humidity to state topics using the custom hostname
     char tempPayload[16];
     snprintf(tempPayload, sizeof(tempPayload), "%.1f", temperature);
-    mqttClient.publish("homeassistant/sensor/deskclock/temperature/state", tempPayload, true);
+    mqttClient.publish(("homeassistant/sensor/" + String(deviceConfig.hostname) + "/temperature/state").c_str(), tempPayload, true);
 
     char humPayload[16];
     snprintf(humPayload, sizeof(humPayload), "%.1f", humidity);
-    mqttClient.publish("homeassistant/sensor/deskclock/humidity/state", humPayload, true);
+    mqttClient.publish(("homeassistant/sensor/" + String(deviceConfig.hostname) + "/humidity/state").c_str(), humPayload, true);
 }
 
 void setupTelnet() {

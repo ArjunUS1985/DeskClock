@@ -46,9 +46,18 @@ struct MQTTConfig {
     }
 };
 
+struct DeviceConfig {
+    char hostname[32];  // Device hostname for network identification
+    
+    DeviceConfig() {
+        strcpy(hostname, "DeskClock");  // Default hostname
+    }
+};
+
 extern MQTTConfig mqttConfig;
 extern TimeConfig timeConfig;
 extern DisplayConfig displayConfig;
+extern DeviceConfig deviceConfig;  // Add the extern declaration
 
 // Declare the server object as extern to avoid multiple definitions
 extern ESP8266WebServer server;
@@ -101,3 +110,8 @@ void setManualTime(int year, int month, int day, int hour, int minute);
 void loadDisplayConfig();
 void saveDisplayConfig();
 void setDefaultDisplayConfig();
+
+// Add new function declarations for device configuration
+void loadDeviceConfig();
+void saveDeviceConfig();
+void setDefaultDeviceConfig();

@@ -474,7 +474,7 @@ void loop() {
                 time_t now = time(nullptr);
                 struct tm *timeinfo = localtime(&now);
                 char dateStr[10];
-                strftime(dateStr, sizeof(dateStr), "%b-%d", timeinfo);
+                strftime(dateStr, sizeof(dateStr), "%b %d", timeinfo);
                 // Convert month to uppercase
                 if (dateStr[0] != '\0') {
                   dateStr[0] = toupper(dateStr[0]);

@@ -584,7 +584,7 @@ void handleRoot() {
     <form action='/settime' method='POST'>
         <h2>Manual Time Setting</h2>
         <div class='form-group'>
-            <label>Date and Time:</label><br>
+            <label>Date and Time: [Will reset to auto on restart]</label><br>
             <input type='number' name='year' id='year' min='2000' max='2099' required style='width:70px'> Year 
             <input type='number' name='month' id='month' min='1' max='12' required style='width:50px'> Month 
             <input type='number' name='day' id='day' min='1' max='31' required style='width:50px'> Day<br>

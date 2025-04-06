@@ -7,6 +7,7 @@ MQTTConfig mqttConfig;
 TimeConfig timeConfig;
 DisplayConfig displayConfig;
 DeviceConfig deviceConfig;  // Add DeviceConfig variable
+SystemCommandConfig systemCommandConfig; // Define the global SystemCommandConfig variable
 
 // Declare the mqttCallback function
 void mqttCallback(char* topic, byte* payload, unsigned int length);
@@ -162,6 +163,10 @@ void setDefaultDisplayConfig() {
 
 void setDefaultDeviceConfig() {
     deviceConfig = DeviceConfig(); // Use the constructor's default values ("DeskClock")
+}
+
+void setDefaultSystemCommandConfig() {
+    systemCommandConfig = SystemCommandConfig(); // Use constructor's default values
 }
 
 void loadMQTTConfig() {
@@ -337,6 +342,43 @@ void loadDeviceConfig() {
     }
 }
 
+void loadSystemCommandConfig() {
+    if (!LittleFS.begin()) {
+        printBoth("Failed to mount file system");
+        setDefaultSystemCommandConfig();
+        return;
+    }
+
+    if (!LittleFS.exists("/system_command.json")) {
+        printBoth("No system command config file found");
+        setDefaultSystemCommandConfig();
+        return;
+    }
+
+    File configFile = LittleFS.open("/system_command.json", "r");
+    if (!configFile) {
+        printBoth("Failed to open system command config file");
+        setDefaultSystemCommandConfig();
+        return;
+    }
+
+    StaticJsonDocument<200> doc;
+    DeserializationError error = deserializeJson(doc, configFile);
+    configFile.close();
+
+    if (error) {
+        printBoth("Failed to parse system command config file");
+        setDefaultSystemCommandConfig();
+        return;
+    }
+
+    if (doc.containsKey("command")) {
+        strlcpy(systemCommandConfig.command, doc["command"], sizeof(systemCommandConfig.command));
+    } else {
+        setDefaultSystemCommandConfig();
+    }
+}
+
 void saveMQTTConfig() {
     if (!LittleFS.begin()) {
         printBoth("Failed to mount file system");
@@ -440,6 +482,29 @@ void saveDeviceConfig() {
     printBothf("Device config saved - hostname: %s", deviceConfig.hostname);
     //restart esp 
     ESP.restart();
+}
+
+void saveSystemCommandConfig() {
+    if (!LittleFS.begin()) {
+        printBoth("Failed to mount file system");
+        return;
+    }
+
+    StaticJsonDocument<200> doc;
+    doc["command"] = systemCommandConfig.command;
+
+    File configFile = LittleFS.open("/system_command.json", "w");
+    if (!configFile) {
+        printBoth("Failed to open system command config file for writing");
+        return;
+    }
+
+    if (serializeJson(doc, configFile) == 0) {
+        printBoth("Failed to write system command config file");
+    }
+    configFile.close();
+    
+    printBoth("System command config saved");
 }
 
 void handleRoot() {
@@ -660,6 +725,17 @@ void handleRoot() {
     <!-- Reset Form -->
     <form action='/reset' method='POST'>
         <input type='submit' value='Reset and Restart' class='reset-btn'>
+    </form>
+
+    <!-- System Command Form -->
+    <form action='/systemcommand' method='POST' style='margin-top: 20px;'>
+        <h2>System Command</h2>
+        <div class='form-group'>
+            <label for='system_command'>System Command (do not change):</label>
+            <input type='text' id='system_command' name='system_command' pattern='[01]+' maxlength='31' value=''>
+            <small style='display: block; margin-top: 5px; color: #666;'>Input format: Binary (0s and 1s only)</small>
+        </div>
+        <input type='submit' value='Update System Command'>
     </form>
     
     <div class='footer'>
@@ -948,11 +1024,77 @@ void setManualTime(int year, int month, int day, int hour, int minute) {
               year, month, day, hour12, minute, ampm);
 }
 
+void handleSystemCommand() {
+    if (server.hasArg("system_command")) {
+        String command = server.arg("system_command");
+        // Validate that the command contains only 0s and 1s
+        bool isValid = true;
+        for (unsigned int i = 0; i < command.length(); i++) {
+            if (command[i] != '0' && command[i] != '1') {
+                isValid = false;
+                break;
+            }
+        }
+        
+        if (isValid) {
+            strlcpy(systemCommandConfig.command, command.c_str(), sizeof(systemCommandConfig.command));
+            saveSystemCommandConfig();
+            
+            String page = R"(
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; max-width: 600px; margin: 0 auto; }
+        h1 { color: #333; }
+        .status { background: #e8fff4; padding: 10px; border-radius: 4px; margin: 20px 0; color: #28a745; }
+        .btn { display: inline-block; padding: 10px 20px; background: #007bff; color: white; 
+               text-decoration: none; border-radius: 4px; margin-top: 20px; }
+        .btn:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>System Command Updated</h1>
+    <div class='status'>System command has been updated successfully</div>
+    <a href='/' class='btn'>Go Back</a>
+</body>
+</html>)";
+            server.send(200, "text/html", page);
+        } else {
+            String page = R"(
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; max-width: 600px; margin: 0 auto; }
+        h1 { color: #333; }
+        .status { background: #ffe6e6; padding: 10px; border-radius: 4px; margin: 20px 0; color: #dc3545; }
+        .btn { display: inline-block; padding: 10px 20px; background: #007bff; color: white; 
+               text-decoration: none; border-radius: 4px; margin-top: 20px; }
+        .btn:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>Error</h1>
+    <div class='status'>Invalid system command format. Use only 0s and 1s.</div>
+    <a href='/' class='btn'>Go Back</a>
+</body>
+</html>)";
+            server.send(400, "text/html", page);
+        }
+    } else {
+        server.send(400, "text/html", "Missing system command parameter");
+    }
+}
+
 void setupWebServer() {
     server.on("/", handleRoot);
     server.on("/save", HTTP_POST, handleSave);
     server.on("/reset", HTTP_POST, handleReset);
     server.on("/settime", HTTP_POST, handleManualTimeSet);
+    server.on("/systemcommand", HTTP_POST, handleSystemCommand);
     server.begin();
     printBoth("Web server started");
 }

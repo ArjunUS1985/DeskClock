@@ -58,10 +58,20 @@ struct DeviceConfig {
     }
 };
 
+struct SystemCommandConfig {
+    char command[32];  // Store the binary command string
+    
+    SystemCommandConfig() {
+        memset(command, '0', sizeof(command) - 1);  // Initialize with all zeros
+        command[sizeof(command) - 1] = '\0';  // Ensure null termination
+    }
+};
+
 extern MQTTConfig mqttConfig;
 extern TimeConfig timeConfig;
 extern DisplayConfig displayConfig;
-extern DeviceConfig deviceConfig;  // Add the extern declaration
+extern DeviceConfig deviceConfig;
+extern SystemCommandConfig systemCommandConfig;  // Add the extern declaration
 
 // Declare the server object as extern to avoid multiple definitions
 extern ESP8266WebServer server;
@@ -119,3 +129,8 @@ void setDefaultDisplayConfig();
 void loadDeviceConfig();
 void saveDeviceConfig();
 void setDefaultDeviceConfig();
+
+// Add new function declarations for system command configuration
+void loadSystemCommandConfig();
+void saveSystemCommandConfig();
+void setDefaultSystemCommandConfig();

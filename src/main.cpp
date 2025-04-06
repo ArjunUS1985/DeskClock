@@ -276,6 +276,14 @@ void updateBrightness() {
     }
 }
 
+#define MAX_COMMAND_LENGTH 31
+
+// Helper function to check if a specific feature bit is enabled
+bool isFeatureEnabled(uint8_t bitPosition) {
+    if (bitPosition >= MAX_COMMAND_LENGTH) return false;
+    return (systemCommandConfig.command[bitPosition] == '1');
+}
+
 void setup() {
     // Initialize Serial Monitor
     Serial.begin(9600);
@@ -295,10 +303,16 @@ void setup() {
    myDisplay.displayClear();
     
     // Apply vertical flip to the main display
-   //for (uint8_t i = 0; i < MAX_DEVICES; i++) {
-   //     myDisplay.setZoneEffect(0,true,PA_FLIP_UD);
-   //    myDisplay.setZoneEffect(0,true,PA_FLIP_LR);
-   // }
+ // You can now check for specific features using isFeatureEnabled()
+    // For example, if bit 0 controls display flipping:
+    if (isFeatureEnabled(0)) {
+        // Enable display flipping
+    
+    for (uint8_t i = 0; i < MAX_DEVICES; i++) {
+        myDisplay.setZoneEffect(0,true,PA_FLIP_UD);
+       myDisplay.setZoneEffect(0,true,PA_FLIP_LR);
+   }
+}
 
     // Initialize dedicated time display
     timeDisplay.begin();
@@ -388,7 +402,12 @@ void setup() {
     loadMQTTConfig();
     loadTimeConfig();
     loadDisplayConfig();
-    loadDeviceConfig(); // Load device configuration including hostname
+    loadDeviceConfig();
+    loadSystemCommandConfig(); // Load system command configuration
+    
+    // Print system command status (only to Serial/Telnet, not display)
+    printBoth("System command configuration loaded");
+    
     updateDisplaySequence();
     
     setupTime();
@@ -518,6 +537,7 @@ void loop() {
    
 
    
+
 }
 
 

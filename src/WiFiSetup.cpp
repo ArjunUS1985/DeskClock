@@ -779,7 +779,7 @@ void handleRoot() {
     <br><hr><h3>Firmware Update</h3>
     <form action='/save' method='POST'>
         <label>Firmware URL: </label>
-        <input type='text' name='firmware_url' value=')" + String(firmwareConfig.update_url) + R"(' maxlength='255'><br>
+        <input type='text' name='firmware_url' value=')" + (strlen(firmwareConfig.update_url) > 0 ? String(firmwareConfig.update_url) : "") + R"(' maxlength='512' placeholder='Enter firmware URL'><br>
         <input type='submit' value='Save Settings'>
     </form>
     <form action='/update' method='post'>
@@ -1150,33 +1150,33 @@ void handleFirmwareUpdate() {
 
     displaySetupMessage("Starting Update");
     WiFiClient client;
+
     ESPhttpUpdate.rebootOnUpdate(false);
-    
-    // Increase timeouts to handle unstable connections
-    //ESPhttpUpdate.setConnectionRequestTimeout(5000); // 5 second timeout for connection
-    // ESPhttpUpdate does not support setTimeout; relying on default timeout
-    
+    ESPhttpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+
     ESPhttpUpdate.onStart([]() {
         displaySetupMessage("Update Started");
     });
-    
-    ESPhttpUpdate.onProgress([](int current, int total) {
+
+    ESPhttpUpdate.onProgress([](size_t current, size_t total) {
         char progress[32];
-        snprintf(progress, sizeof(progress), "Progress: %d%%", (current * 100) / total);
-        displaySetupMessage(progress);
+        snprintf(progress, sizeof(progress), "Progress: %d%%", (int)((current * 100) / total));
+        printBoth(progress);
     });
-    
+
     ESPhttpUpdate.onEnd([]() {
         displaySetupMessage("Update Complete");
     });
-    
+
     ESPhttpUpdate.onError([](int error) {
         char errorMsg[32];
         snprintf(errorMsg, sizeof(errorMsg), "Update Error: %d", error);
         displaySetupMessage(errorMsg);
     });
 
-    t_httpUpdate_return ret = ESPhttpUpdate.update(client, firmwareConfig.update_url);
+    // Use version "" to skip version checking
+    printBothf("Starting firmware update from URL: %s", firmwareConfig.update_url);
+    t_httpUpdate_return ret = ESPhttpUpdate.update(client, firmwareConfig.update_url, "");
 
     String response;
     switch (ret) {

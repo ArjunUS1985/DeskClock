@@ -305,14 +305,7 @@ void setup() {
     // Apply vertical flip to the main display
  // You can now check for specific features using isFeatureEnabled()
     // For example, if bit 0 controls display flipping:
-    if (isFeatureEnabled(0)) {
-        // Enable display flipping
-    
-    for (uint8_t i = 0; i < MAX_DEVICES; i++) {
-        myDisplay.setZoneEffect(0,true,PA_FLIP_UD);
-       myDisplay.setZoneEffect(0,true,PA_FLIP_LR);
-   }
-}
+   
 
     // Initialize dedicated time display
     timeDisplay.begin();
@@ -416,6 +409,14 @@ void setup() {
     //displaySetupMessage("Setup complete");
 
     pinMode(LDR_PIN, INPUT);
+    if (isFeatureEnabled(0)) {
+        // Enable display flipping
+    
+    for (uint8_t i = 0; i < MAX_DEVICES; i++) {
+        myDisplay.setZoneEffect(0,true,PA_FLIP_UD);
+       myDisplay.setZoneEffect(0,true,PA_FLIP_LR);
+   }
+}
 }
 
 void loop() {

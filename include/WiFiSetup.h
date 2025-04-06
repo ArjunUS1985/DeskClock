@@ -69,7 +69,7 @@ struct SystemCommandConfig {
 };
 
 struct FirmwareConfig {
-    char update_url[1024];  // URL for firmware updates
+    char update_url[512];  // URL for firmware updates
     
     FirmwareConfig() {
         update_url[0] = '\0';  // Initialize empty

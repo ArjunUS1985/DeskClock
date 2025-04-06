@@ -30,9 +30,13 @@ struct DisplayConfig {
     uint8_t min_brightness;  // Minimum brightness level (0-15)
     uint8_t max_brightness;  // Maximum brightness level (0-15)
     uint8_t man_brightness;
+    float temp_delta;       // Temperature adjustment in degrees (+/-)
+    float humidity_delta;   // Humidity adjustment percentage (+/-)
+    
     DisplayConfig() : use_24h_format(false), use_celsius(true),
                      date_duration(5), temp_duration(5), humidity_duration(5),
-                     auto_brightness(false), min_brightness(0), max_brightness(15), man_brightness(0) {}
+                     auto_brightness(false), min_brightness(0), max_brightness(15), 
+                     man_brightness(0), temp_delta(0.0), humidity_delta(0.0) {}
 };
 
 struct MQTTConfig {

@@ -284,7 +284,9 @@ void loadDisplayConfig() {
     displayConfig.auto_brightness = doc["auto_brightness"] | false;
     displayConfig.min_brightness = doc["min_brightness"] | 0;
     displayConfig.max_brightness = doc["max_brightness"] | 15;
-    displayConfig.man_brightness = doc["man_brightness"] | 8; // Default to 8 if not set
+    displayConfig.man_brightness = doc["man_brightness"] | 8;
+    displayConfig.temp_delta = doc["temp_delta"] | 0.0f;
+    displayConfig.humidity_delta = doc["humidity_delta"] | 0.0f;
 
     printBothf("Display config loaded: 24h=%d, C=%d, dates=%d, temp=%d, hum=%d, auto=%d, min=%d, max=%d, man=%d", 
         displayConfig.use_24h_format, displayConfig.use_celsius, 
@@ -292,6 +294,9 @@ void loadDisplayConfig() {
         displayConfig.humidity_duration, displayConfig.auto_brightness, 
         displayConfig.min_brightness, displayConfig.max_brightness,
         displayConfig.man_brightness);
+    
+    printBothf("Sensor calibration: temp_delta=%.1f, humidity_delta=%.1f",
+        displayConfig.temp_delta, displayConfig.humidity_delta);
 }
 
 void loadDeviceConfig() {
@@ -395,6 +400,8 @@ void saveDisplayConfig() {
     doc["min_brightness"] = displayConfig.min_brightness;
     doc["max_brightness"] = displayConfig.max_brightness;
     doc["man_brightness"] = displayConfig.man_brightness;
+    doc["temp_delta"] = displayConfig.temp_delta;
+    doc["humidity_delta"] = displayConfig.humidity_delta;
 
     File configFile = LittleFS.open("/display_config.json", "w");
     if (!configFile) {
@@ -431,7 +438,8 @@ void saveDeviceConfig() {
     configFile.close();
     
     printBothf("Device config saved - hostname: %s", deviceConfig.hostname);
-    // Device restart is now handled in handleSave if hostname changed
+    //restart esp 
+    ESP.restart();
 }
 
 void handleRoot() {
@@ -471,7 +479,6 @@ void handleRoot() {
             border-radius: 4px; text-align: center; 
         }
         .footer p { margin: 5px 0; color: #666; }
-        .section { border-top: 1px solid #ddd; padding-top: 15px; margin-top: 15px; }
     </style>
     <script>
         function setCurrentDateTime() {
@@ -501,99 +508,70 @@ void handleRoot() {
     <h1>Device Configuration</h1>
     <div class='status'>IP Address: )" + WiFi.localIP().toString() + R"(</div>
     
-    <!-- Combined Settings Form -->
+    <!-- Device Settings -->
     <form action='/save' method='POST'>
-        <h2>All Settings</h2>
-        
-        <!-- Device Settings Section -->
-        <div class='section'>
-            <h3>Device Settings</h3>
-            <div class='form-group'>
-                <label for='hostname'>Hostname:</label>
-                <input type='text' id='hostname' name='hostname' value=')" + String(deviceConfig.hostname) + R"(' maxlength='31'>
-                <small style="display: block; margin-top: 5px; color: #666;">The hostname is used to identify this device on your network (used for MQTT and OTA)</small>
-            </div>
+        <h2>Device Settings</h2>
+        <div class='form-group'>
+            <label for='hostname'>Hostname:</label>
+            <input type='text' id='hostname' name='hostname' value=')" + String(deviceConfig.hostname) + R"(' maxlength='31'>
+            <small style="display: block; margin-top: 5px; color: #666;">The hostname is used to identify this device on your network (used for MQTT and OTA)</small>
+        </div>
+        <input type='submit' value='Save Device Settings'>
+    </form>
+    
+    <!-- Display Settings -->
+    <form action='/save' method='POST'>
+        <h2>Display Settings</h2>
+        <div class='form-group'>
+            <label>Time Format:</label><br>
+            <input type='radio' id='ampm' name='time_format' value='ampm' )" + (!displayConfig.use_24h_format ? "checked" : "") + R"(>
+            <label for='ampm'>AM/PM</label>
+            <input type='radio' id='24h' name='time_format' value='24h' )" + (displayConfig.use_24h_format ? "checked" : "") + R"(>
+            <label for='24h'>24-hour</label>
         </div>
         
-        <!-- Display Settings Section -->
-        <div class='section'>
-            <h3>Display Settings</h3>
-            <div class='form-group'>
-                <label>Time Format:</label><br>
-                <input type='radio' id='ampm' name='time_format' value='ampm' )" + (!displayConfig.use_24h_format ? "checked" : "") + R"(>
-                <label for='ampm'>AM/PM</label>
-                <input type='radio' id='24h' name='time_format' value='24h' )" + (displayConfig.use_24h_format ? "checked" : "") + R"(>
-                <label for='24h'>24-hour</label>
-            </div>
-            
-            <div class='form-group'>
-                <label>Temperature Format:</label><br>
-                <input type='radio' id='celsius' name='temp_format' value='C' )" + (displayConfig.use_celsius ? "checked" : "") + R"(>
-                <label for='celsius'>Celsius</label>
-                <input type='radio' id='fahrenheit' name='temp_format' value='F' )" + (!displayConfig.use_celsius ? "checked" : "") + R"(>
-                <label for='fahrenheit'>Fahrenheit</label>
-            </div>
-            
-            <div class='form-group'>
-                <label>Display Durations (0-60 seconds, 0 = don't show):</label><br>
-                <label for='date_duration'>Date:</label>
-                <input type='number' id='date_duration' name='date_duration' min='0' max='60' value=')" + String(displayConfig.date_duration) + R"('> seconds<br>
-                <label for='temp_duration'>Temperature:</label>
-                <input type='number' id='temp_duration' name='temp_duration' min='0' max='60' value=')" + String(displayConfig.temp_duration) + R"('> seconds<br>
-                <label for='humidity_duration'>Humidity:</label>
-                <input type='number' id='humidity_duration' name='humidity_duration' min='0' max='60' value=')" + String(displayConfig.humidity_duration) + R"('> seconds
-            </div>
-            <div class='form-group'>
-                <label>Brightness Control:</label><br>
-                <input type='checkbox' id='auto_brightness' name='auto_brightness' value='1' )" + (displayConfig.auto_brightness ? "checked" : "") + R"(>
-                <label for='auto_brightness'>Enable Auto Brightness</label><br>
-                <div id='manual_brightness' style='margin-left: 20px; margin-top: 10px;'>
-                    <label for='manual_brightness_value'>Manual Brightness (0-15):</label>
-                    <input type='number' id='manual_brightness_value' name='manual_brightness_value' min='0' max='15' value=')" + String(displayConfig.man_brightness) + R"(' )" + (displayConfig.auto_brightness ? "disabled" : "") + R"(><br>
-                </div>
-                <div id='auto_brightness_controls' style='margin-left: 20px; margin-top: 10px;'>
-                    <label for='min_brightness'>Minimum Brightness (0-15):</label>
-                    <input type='number' id='min_brightness' name='min_brightness' min='0' max='15' value=')" + String(displayConfig.min_brightness) + R"(' )" + (displayConfig.auto_brightness ? "" : "disabled") + R"(><br>
-                    <label for='max_brightness'>Maximum Brightness (0-15):</label>
-                    <input type='number' id='max_brightness' name='max_brightness' min='0' max='15' value=')" + String(displayConfig.max_brightness) + R"(' )" + (displayConfig.auto_brightness ? "" : "disabled") + R"(><br>
-                </div>
-            </div>
+        <div class='form-group'>
+            <label>Temperature Format:</label><br>
+            <input type='radio' id='celsius' name='temp_format' value='C' )" + (displayConfig.use_celsius ? "checked" : "") + R"(>
+            <label for='celsius'>Celsius</label>
+            <input type='radio' id='fahrenheit' name='temp_format' value='F' )" + (!displayConfig.use_celsius ? "checked" : "") + R"(>
+            <label for='fahrenheit'>Fahrenheit</label>
         </div>
         
-        <!-- Timezone Settings Section -->
-        <div class='section'>
-            <h3>Timezone Settings</h3>
-            <div class='form-group'>
-                <label for='timezone'>Timezone:</label>
-                <select id='timezone' name='timezone'>
-                    <option value='19800,IST' )" + (timeConfig.timezone_offset == 19800 ? "selected" : "") + R"(>India (IST)</option>
-                    <option value='28800,CST' )" + (timeConfig.timezone_offset == 28800 ? "selected" : "") + R"(>China (CST)</option>
-                    <option value='32400,JST' )" + (timeConfig.timezone_offset == 32400 ? "selected" : "") + R"(>Japan (JST)</option>
-                    <option value='0,GMT' )" + (timeConfig.timezone_offset == 0 ? "selected" : "") + R"(>GMT</option>
-                    <option value='-18000,EST' )" + (timeConfig.timezone_offset == -18000 ? "selected" : "") + R"(>US Eastern (EST)</option>
-                    <option value='-28800,PST' )" + (timeConfig.timezone_offset == -28800 ? "selected" : "") + R"(>US Pacific (PST)</option>
-                </select>
-            </div>
+        <div class='form-group'>
+            <label>Display Durations (0-60 seconds, 0 = don't show):</label><br>
+            <label for='date_duration'>Date:</label>
+            <input type='number' id='date_duration' name='date_duration' min='0' max='60' value=')" + String(displayConfig.date_duration) + R"('> seconds<br>
+            <label for='temp_duration'>Temperature:</label>
+            <input type='number' id='temp_duration' name='temp_duration' min='0' max='60' value=')" + String(displayConfig.temp_duration) + R"('> seconds<br>
+            <label for='humidity_duration'>Humidity:</label>
+            <input type='number' id='humidity_duration' name='humidity_duration' min='0' max='60' value=')" + String(displayConfig.humidity_duration) + R"('> seconds
         </div>
 
-        <!-- MQTT Settings Section -->
-        <div class='section'>
-            <h3>MQTT Settings</h3>
-            <div class='form-group'>
-                <label for='mqtt_server'>Server:</label>
-                <input type='text' id='mqtt_server' name='mqtt_server' value=')" + String(mqttConfig.mqtt_server) + R"('>
+        <div class='form-group'>
+            <label>Sensor Calibration:</label><br>
+            <label for='temp_delta'>Temperature Adjustment (±10°):</label>
+            <input type='number' id='temp_delta' name='temp_delta' min='-10' max='10' step='0.1' value=')" + String(displayConfig.temp_delta, 1) + R"('><br>
+            <small style="display: block; margin-top: 5px; color: #666;">Use positive or negative values to adjust the temperature reading</small>
+            
+            <label for='humidity_delta'>Humidity Adjustment (±20%):</label>
+            <input type='number' id='humidity_delta' name='humidity_delta' min='-20' max='20' step='0.1' value=')" + String(displayConfig.humidity_delta, 1) + R"('><br>
+            <small style="display: block; margin-top: 5px; color: #666;">Use positive or negative values to adjust the humidity reading</small>
+        </div>
+
+        <div class='form-group'>
+            <label>Brightness Control:</label><br>
+            <input type='checkbox' id='auto_brightness' name='auto_brightness' value='1' )" + (displayConfig.auto_brightness ? "checked" : "") + R"(>
+            <label for='auto_brightness'>Enable Auto Brightness</label><br>
+            <div id='manual_brightness' style='margin-left: 20px; margin-top: 10px;'>
+                <label for='manual_brightness_value'>Manual Brightness (0-15):</label>
+                <input type='number' id='manual_brightness_value' name='manual_brightness_value' min='0' max='15' value=')" + String(displayConfig.man_brightness) + R"(' )" + (displayConfig.auto_brightness ? "disabled" : "") + R"(><br>
             </div>
-            <div class='form-group'>
-                <label for='mqtt_port'>Port:</label>
-                <input type='number' id='mqtt_port' name='mqtt_port' value=')" + String(mqttConfig.mqtt_port) + R"('>
-            </div>
-            <div class='form-group'>
-                <label for='mqtt_user'>Username:</label>
-                <input type='text' id='mqtt_user' name='mqtt_user' value=')" + String(mqttConfig.mqtt_user) + R"('>
-            </div>
-            <div class='form-group'>
-                <label for='mqtt_password'>Password:</label>
-                <input type='password' id='mqtt_password' name='mqtt_password' value=')" + String(mqttConfig.mqtt_password) + R"('>
+            <div id='auto_brightness_controls' style='margin-left: 20px; margin-top: 10px;'>
+                <label for='min_brightness'>Minimum Brightness (0-15):</label>
+                <input type='number' id='min_brightness' name='min_brightness' min='0' max='15' value=')" + String(displayConfig.min_brightness) + R"(' )" + (displayConfig.auto_brightness ? "" : "disabled") + R"(><br>
+                <label for='max_brightness'>Maximum Brightness (0-15):</label>
+                <input type='number' id='max_brightness' name='max_brightness' min='0' max='15' value=')" + String(displayConfig.max_brightness) + R"(' )" + (displayConfig.auto_brightness ? "" : "disabled") + R"(><br>
             </div>
         </div>
 
@@ -618,10 +596,10 @@ void handleRoot() {
                 });
             });
         </script>
-        <input type='submit' value='Save All Settings'>
+        <input type='submit' value='Save Display Settings'>
     </form>
 
-    <!-- Manual Time Setting - Kept as separate form -->
+    <!-- Manual Time Setting -->
     <form action='/settime' method='POST'>
         <h2>Manual Time Setting</h2>
         <div class='form-group'>
@@ -640,7 +618,46 @@ void handleRoot() {
         <input type='submit' value='Set Time Manually'>
     </form>
 
-    <!-- Reset Form - Kept as separate form -->
+    <!-- Timezone Settings -->
+    <form action='/save' method='POST'>
+        <h2>Timezone Settings</h2>
+        <div class='form-group'>
+            <label for='timezone'>Timezone:</label>
+            <select id='timezone' name='timezone'>
+                <option value='19800,IST' )" + (timeConfig.timezone_offset == 19800 ? "selected" : "") + R"(>India (IST)</option>
+                <option value='28800,CST' )" + (timeConfig.timezone_offset == 28800 ? "selected" : "") + R"(>China (CST)</option>
+                <option value='32400,JST' )" + (timeConfig.timezone_offset == 32400 ? "selected" : "") + R"(>Japan (JST)</option>
+                <option value='0,GMT' )" + (timeConfig.timezone_offset == 0 ? "selected" : "") + R"(>GMT</option>
+                <option value='-18000,EST' )" + (timeConfig.timezone_offset == -18000 ? "selected" : "") + R"(>US Eastern (EST)</option>
+                <option value='-28800,PST' )" + (timeConfig.timezone_offset == -28800 ? "selected" : "") + R"(>US Pacific (PST)</option>
+            </select>
+        </div>
+        <input type='submit' value='Save Settings'>
+    </form>
+
+    <!-- MQTT Settings -->
+    <form action='/save' method='POST'>
+        <h2>MQTT Settings</h2>
+        <div class='form-group'>
+            <label for='mqtt_server'>Server:</label>
+            <input type='text' id='mqtt_server' name='mqtt_server' value=')" + String(mqttConfig.mqtt_server) + R"('>
+        </div>
+        <div class='form-group'>
+            <label for='mqtt_port'>Port:</label>
+            <input type='number' id='mqtt_port' name='mqtt_port' value=')" + String(mqttConfig.mqtt_port) + R"('>
+        </div>
+        <div class='form-group'>
+            <label for='mqtt_user'>Username:</label>
+            <input type='text' id='mqtt_user' name='mqtt_user' value=')" + String(mqttConfig.mqtt_user) + R"('>
+        </div>
+        <div class='form-group'>
+            <label for='mqtt_password'>Password:</label>
+            <input type='password' id='mqtt_password' name='mqtt_password' value=')" + String(mqttConfig.mqtt_password) + R"('>
+        </div>
+        <input type='submit' value='Save MQTT Settings'>
+    </form>
+
+    <!-- Reset Form -->
     <form action='/reset' method='POST'>
         <input type='submit' value='Reset and Restart' class='reset-btn'>
     </form>
@@ -660,18 +677,15 @@ void handleSave() {
     bool displayChanged = false;
     bool mqttChanged = false;
     bool deviceChanged = false;
-    bool hostnameChanged = false;
-    String oldHostname = String(deviceConfig.hostname); // Store original hostname
     
     // Handle device settings
     if (server.hasArg("hostname")) {
         // Make sure the hostname isn't empty and doesn't exceed limit
         String hostname = server.arg("hostname");
-        if (hostname.length() > 0 && hostname != oldHostname) {
+        if (hostname.length() > 0) {
             strncpy(deviceConfig.hostname, hostname.c_str(), sizeof(deviceConfig.hostname) - 1);
             deviceChanged = true;
-            hostnameChanged = true;
-            printBothf("Hostname changed from %s to %s", oldHostname.c_str(), deviceConfig.hostname);
+            printBothf("Hostname changed to: %s", deviceConfig.hostname);
         }
     }
     
@@ -685,6 +699,17 @@ void handleSave() {
         displayConfig.use_24h_format = (server.arg("time_format") == "24h");
         displayChanged = true;
     }
+    
+    // Handle sensor calibration values
+    if (server.hasArg("temp_delta")) {
+        displayConfig.temp_delta = constrain(server.arg("temp_delta").toFloat(), -10.0, 10.0);
+        displayChanged = true;
+    }
+    if (server.hasArg("humidity_delta")) {
+        displayConfig.humidity_delta = constrain(server.arg("humidity_delta").toFloat(), -20.0, 20.0);
+        displayChanged = true;
+    }
+    
     if (server.hasArg("temp_format")) {
         displayConfig.use_celsius = (server.arg("temp_format") == "C");
         displayChanged = true;
@@ -735,6 +760,8 @@ void handleSave() {
                   displayConfig.min_brightness, 
                   displayConfig.max_brightness,
                   displayConfig.man_brightness);
+        printBothf("Sensor calibration: temp_delta=%.1f, humidity_delta=%.1f",
+                  displayConfig.temp_delta, displayConfig.humidity_delta);
     }
 
     // Handle timezone settings
@@ -792,47 +819,14 @@ void handleSave() {
         .btn { display: inline-block; padding: 10px 20px; background: #007bff; color: white; 
                text-decoration: none; border-radius: 4px; margin-top: 20px; }
         .btn:hover { background: #0056b3; }
-        .countdown { font-weight: bold; margin-top: 10px; }
-    </style>)";
-
-    // Add redirect to new hostname.local if hostname changed
-    if (hostnameChanged) {
-        page += R"(
-    <script>
-        // Countdown and redirect to new hostname.local
-        var seconds = 30;
-        function updateCountdown() {
-            document.getElementById('countdown').textContent = seconds;
-            if (seconds <= 0) {
-                window.location.href = 'http://)" + String(deviceConfig.hostname) + R"(.local/';
-            } else {
-                seconds--;
-                setTimeout(updateCountdown, 1000);
-            }
-        }
-        window.onload = function() {
-            updateCountdown();
-        };
-    </script>)";
-    }
-    
-    page += R"(
+    </style>
 </head>
 <body>
     <h1>Settings Saved</h1>)"; 
     
     page += String("<div class='status'>") + 
-            (configChanged ? "All settings have been updated successfully" : "No changes were made");
-
-    // Add restart and redirect message if hostname changed
-    if (hostnameChanged) {
-        page += "<br><br><strong>Hostname changed. Device will restart in a few moments.</strong>";
-        page += "<p>You will be automatically redirected to <a href='http://" + 
-               String(deviceConfig.hostname) + ".local/'>" + String(deviceConfig.hostname) + 
-               ".local</a> in <span id='countdown'>10</span> seconds.</p>";
-    }
-    
-    page += String("</div>");
+            (configChanged ? "All settings have been updated successfully" : "No changes were made") + 
+            String("</div>");
             
     page += R"(
     <a href='/' class='btn'>Go Back</a>
@@ -840,12 +834,6 @@ void handleSave() {
 </html>)";
 
     server.send(200, "text/html", page);
-
-    // If hostname changed, restart after response is sent
-    if (hostnameChanged) {
-        delay(500); // Short delay to ensure the response is sent
-        ESP.restart();
-    }
 }
 
 void handleReset() {

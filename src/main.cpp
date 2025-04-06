@@ -295,10 +295,10 @@ void setup() {
    myDisplay.displayClear();
     
     // Apply vertical flip to the main display
-    for (uint8_t i = 0; i < MAX_DEVICES; i++) {
-        myDisplay.setZoneEffect(0,true,PA_FLIP_UD);
-        myDisplay.setZoneEffect(0,true,PA_FLIP_LR);
-    }
+   //for (uint8_t i = 0; i < MAX_DEVICES; i++) {
+   //     myDisplay.setZoneEffect(0,true,PA_FLIP_UD);
+   //    myDisplay.setZoneEffect(0,true,PA_FLIP_LR);
+   // }
 
     // Initialize dedicated time display
     timeDisplay.begin();
@@ -454,6 +454,13 @@ void loop() {
         float temperature = dht.readTemperature(!displayConfig.use_celsius); // true = Fahrenheit
         
         if (!isnan(humidity) && !isnan(temperature)) {
+            // Apply calibration adjustments
+            temperature += displayConfig.temp_delta;
+            humidity += displayConfig.humidity_delta;
+            
+            // Constrain humidity to valid range (0-100%)
+            humidity = constrain(humidity, 0.0, 100.0);
+            
             lastTemp = temperature;
             lastHumidity = humidity;
             publishMQTTData(temperature, humidity);

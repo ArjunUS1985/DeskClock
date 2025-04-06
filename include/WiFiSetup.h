@@ -5,6 +5,7 @@
 #include <ESP8266WiFi.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
+#include <ESP8266httpUpdate.h>
 
 // Global variable declarations
 extern time_t lastTimeSync;
@@ -67,11 +68,20 @@ struct SystemCommandConfig {
     }
 };
 
+struct FirmwareConfig {
+    char update_url[1024];  // URL for firmware updates
+    
+    FirmwareConfig() {
+        update_url[0] = '\0';  // Initialize empty
+    }
+};
+
 extern MQTTConfig mqttConfig;
 extern TimeConfig timeConfig;
 extern DisplayConfig displayConfig;
 extern DeviceConfig deviceConfig;
 extern SystemCommandConfig systemCommandConfig;  // Add the extern declaration
+extern FirmwareConfig firmwareConfig;  // Add firmware config
 
 // Declare the server object as extern to avoid multiple definitions
 extern ESP8266WebServer server;
@@ -134,3 +144,11 @@ void setDefaultDeviceConfig();
 void loadSystemCommandConfig();
 void saveSystemCommandConfig();
 void setDefaultSystemCommandConfig();
+
+// Add new function declarations for firmware configuration
+void loadFirmwareConfig();
+void saveFirmwareConfig();
+void setDefaultFirmwareConfig();
+void handleFirmwareUpdate();
+void displayUpdateProgress(int progress, const char* status);
+void setupFirmwareUpdates();

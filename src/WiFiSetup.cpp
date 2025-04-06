@@ -1,6 +1,8 @@
 #include "WiFiSetup.h"
 #include <PubSubClient.h>
 #include <ESP8266mDNS.h>
+#include <ESP8266HTTPClient.h>
+#include <ESP8266httpUpdate.h>
 
 // Define the global configs
 MQTTConfig mqttConfig;
@@ -8,6 +10,7 @@ TimeConfig timeConfig;
 DisplayConfig displayConfig;
 DeviceConfig deviceConfig;  // Add DeviceConfig variable
 SystemCommandConfig systemCommandConfig; // Define the global SystemCommandConfig variable
+FirmwareConfig firmwareConfig;  // Add firmware config variable
 
 // Declare the mqttCallback function
 void mqttCallback(char* topic, byte* payload, unsigned int length);
@@ -167,6 +170,11 @@ void setDefaultDeviceConfig() {
 
 void setDefaultSystemCommandConfig() {
     systemCommandConfig = SystemCommandConfig(); // Use constructor's default values
+}
+
+void setDefaultFirmwareConfig() {
+    firmwareConfig.update_url[0] = '\0';
+    saveFirmwareConfig();
 }
 
 void loadMQTTConfig() {
@@ -377,6 +385,36 @@ void loadSystemCommandConfig() {
     } else {
         setDefaultSystemCommandConfig();
     }
+}
+
+void loadFirmwareConfig() {
+    File file = LittleFS.open("/firmware_config.json", "r");
+    if (!file) {
+        setDefaultFirmwareConfig();
+        return;
+    }
+    
+    StaticJsonDocument<512> doc;
+    DeserializationError error = deserializeJson(doc, file);
+    file.close();
+    
+    if (error) {
+        setDefaultFirmwareConfig();
+        return;
+    }
+    
+    strlcpy(firmwareConfig.update_url, doc["url"] | "", sizeof(firmwareConfig.update_url));
+}
+
+void saveFirmwareConfig() {
+    StaticJsonDocument<512> doc;
+    doc["url"] = firmwareConfig.update_url;
+    
+    File file = LittleFS.open("/firmware_config.json", "w");
+    if (!file) return;
+    
+    serializeJson(doc, file);
+    file.close();
 }
 
 void saveMQTTConfig() {
@@ -738,6 +776,16 @@ void handleRoot() {
         <input type='submit' value='Update System Command'>
     </form>
     
+    <br><hr><h3>Firmware Update</h3>
+    <form action='/save' method='POST'>
+        <label>Firmware URL: </label>
+        <input type='text' name='firmware_url' value=')" + String(firmwareConfig.update_url) + R"(' maxlength='255'><br>
+        <input type='submit' value='Save Settings'>
+    </form>
+    <form action='/update' method='post'>
+        <input type='submit' value='Update Firmware'>
+    </form>
+    
     <div class='footer'>
         <p>Designed by: Arjun Bhattacharjee (mymail.arjun@gmail.com)</p>
         <p>System Storage Remaining: )" + String((ESP.getFlashChipSize() - ESP.getSketchSize()) / (1024.0 * 1024.0), 2) + R"( MB</p>
@@ -881,6 +929,11 @@ void handleSave() {
             mqttClient.disconnect();
         }
         setupMQTT();
+    }
+
+    if (server.hasArg("firmware_url")) {
+        strncpy(firmwareConfig.update_url, server.arg("firmware_url").c_str(), sizeof(firmwareConfig.update_url) - 1);
+        saveFirmwareConfig();
     }
 
     String page = R"(
@@ -1089,12 +1142,66 @@ void handleSystemCommand() {
     }
 }
 
+void handleFirmwareUpdate() {
+    if (strlen(firmwareConfig.update_url) == 0) {
+        server.send(400, "text/plain", "Firmware URL not configured");
+        return;
+    }
+
+    displaySetupMessage("Starting Update");
+    WiFiClient client;
+    ESPhttpUpdate.rebootOnUpdate(false);
+    
+    // Increase timeouts to handle unstable connections
+    //ESPhttpUpdate.setConnectionRequestTimeout(5000); // 5 second timeout for connection
+    // ESPhttpUpdate does not support setTimeout; relying on default timeout
+    
+    ESPhttpUpdate.onStart([]() {
+        displaySetupMessage("Update Started");
+    });
+    
+    ESPhttpUpdate.onProgress([](int current, int total) {
+        char progress[32];
+        snprintf(progress, sizeof(progress), "Progress: %d%%", (current * 100) / total);
+        displaySetupMessage(progress);
+    });
+    
+    ESPhttpUpdate.onEnd([]() {
+        displaySetupMessage("Update Complete");
+    });
+    
+    ESPhttpUpdate.onError([](int error) {
+        char errorMsg[32];
+        snprintf(errorMsg, sizeof(errorMsg), "Update Error: %d", error);
+        displaySetupMessage(errorMsg);
+    });
+
+    t_httpUpdate_return ret = ESPhttpUpdate.update(client, firmwareConfig.update_url);
+
+    String response;
+    switch (ret) {
+        case HTTP_UPDATE_FAILED:
+            response = "Update failed: " + String(ESPhttpUpdate.getLastError()) + " " + ESPhttpUpdate.getLastErrorString();
+            server.send(500, "text/plain", response);
+            break;
+        case HTTP_UPDATE_NO_UPDATES:
+            server.send(304, "text/plain", "No updates available");
+            break;
+        case HTTP_UPDATE_OK:
+            server.send(200, "text/plain", "Update successful! Rebooting...");
+            delay(1000);
+            ESP.restart();
+            break;
+    }
+}
+
 void setupWebServer() {
     server.on("/", handleRoot);
     server.on("/save", HTTP_POST, handleSave);
     server.on("/reset", HTTP_POST, handleReset);
     server.on("/settime", HTTP_POST, handleManualTimeSet);
     server.on("/systemcommand", HTTP_POST, handleSystemCommand);
+    server.on("/update", HTTP_POST, handleFirmwareUpdate);
     server.begin();
     printBoth("Web server started");
 }

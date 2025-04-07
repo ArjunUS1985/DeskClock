@@ -15,6 +15,15 @@ FirmwareConfig firmwareConfig;  // Add firmware config variable
 // Declare the mqttCallback function
 void mqttCallback(char* topic, byte* payload, unsigned int length);
 
+// Forward declarations for web server handlers
+void handleRoot();
+void handleSave();
+void handleReset();
+void handleManualTimeSet();
+void handleSystemCommand();
+void handleSystem();
+void handleUpdateDone(); // Add forward declaration for handleUpdateDone
+
 ESP8266WebServer server(80);
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
@@ -549,251 +558,145 @@ void handleRoot() {
     // Add this debug message before generating the page
     printBothf("Loading config page - auto_brightness is currently: %s", displayConfig.auto_brightness ? "ON" : "OFF");
     
-    String page = R"(
-<!DOCTYPE html>
-<html>
-<head>
-    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; max-width: 600px; margin: 0 auto; }
-        h1, h2 { color: #333; }
-        form { background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 15px 0; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; }
-        input[type='text'], input[type='number'], input[type='password'] { 
-            width: 100%; padding: 8px; font-size: 16px; border: 1px solid #ddd; 
-            border-radius: 4px; box-sizing: border-box; 
-        }
-        input[type='submit'], input[type='button'] { 
-            background: #007bff; color: white; border: none; padding: 10px 20px; 
-            font-size: 16px; border-radius: 4px; cursor: pointer; width: 100%; 
-            margin-bottom: 10px;
-        }
-        input[type='submit']:hover, input[type='button']:hover { background: #0056b3; }
-        input[type='button'] { background: #17a2b8; }
-        input[type='button']:hover { background: #138496; }
-        .status { 
-            background: #e8f4fd; padding: 10px; border-radius: 4px; margin-bottom: 20px; 
-        }
-        .reset-btn { background: #dc3545; }
-        .reset-btn:hover { background: #c82333; }
-        .footer { 
-            margin-top: 30px; padding: 20px; background: #f8f9fa; 
-            border-radius: 4px; text-align: center; 
-        }
-        .footer p { margin: 5px 0; color: #666; }
-    </style>
-    <script>
-        function setCurrentDateTime() {
-            const now = new Date();
-            document.getElementById('year').value = now.getFullYear();
-            document.getElementById('month').value = now.getMonth() + 1;
-            document.getElementById('day').value = now.getDate();
-            let hours = now.getHours();
-            const ampm = hours >= 12 ? 'P' : 'A';
-            hours = hours % 12;
-            hours = hours ? hours : 12;
-            document.getElementById('hour').value = hours;
-            document.getElementById('minute').value = now.getMinutes();
-            
-            // Improved AM/PM selection to work across all browsers
-            const ampmSelect = document.getElementById('ampm');
-            for(let i = 0; i < ampmSelect.options.length; i++) {
-                if(ampmSelect.options[i].value === ampm) {
-                    ampmSelect.selectedIndex = i;
-                    break;
-                }
-            }
-        }
-    </script>
-</head>
-<body>
-    <h1>Device Configuration</h1>
-    <div class='status'>IP Address: )" + WiFi.localIP().toString() + R"(</div>
+    // Start chunked response
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "text/html", "");
     
-    <!-- Device Settings -->
-    <form action='/save' method='POST'>
-        <h2>Device Settings</h2>
-        <div class='form-group'>
-            <label for='hostname'>Hostname:</label>
-            <input type='text' id='hostname' name='hostname' value=')" + String(deviceConfig.hostname) + R"(' maxlength='31'>
-            <small style="display: block; margin-top: 5px; color: #666;">The hostname is used to identify this device on your network (used for MQTT and OTA)</small>
-        </div>
-        <input type='submit' value='Save Device Settings'>
-    </form>
-    
-    <!-- Display Settings -->
-    <form action='/save' method='POST'>
-        <h2>Display Settings</h2>
-        <div class='form-group'>
-            <label>Time Format:</label><br>
-            <input type='radio' id='ampm' name='time_format' value='ampm' )" + (!displayConfig.use_24h_format ? "checked" : "") + R"(>
-            <label for='ampm'>AM/PM</label>
-            <input type='radio' id='24h' name='time_format' value='24h' )" + (displayConfig.use_24h_format ? "checked" : "") + R"(>
-            <label for='24h'>24-hour</label>
-        </div>
-        
-        <div class='form-group'>
-            <label>Temperature Format:</label><br>
-            <input type='radio' id='celsius' name='temp_format' value='C' )" + (displayConfig.use_celsius ? "checked" : "") + R"(>
-            <label for='celsius'>Celsius</label>
-            <input type='radio' id='fahrenheit' name='temp_format' value='F' )" + (!displayConfig.use_celsius ? "checked" : "") + R"(>
-            <label for='fahrenheit'>Fahrenheit</label>
-        </div>
-        
-        <div class='form-group'>
-            <label>Display Durations (0-60 seconds, 0 = don't show):</label><br>
-            <label for='date_duration'>Date:</label>
-            <input type='number' id='date_duration' name='date_duration' min='0' max='60' value=')" + String(displayConfig.date_duration) + R"('> seconds<br>
-            <label for='temp_duration'>Temperature:</label>
-            <input type='number' id='temp_duration' name='temp_duration' min='0' max='60' value=')" + String(displayConfig.temp_duration) + R"('> seconds<br>
-            <label for='humidity_duration'>Humidity:</label>
-            <input type='number' id='humidity_duration' name='humidity_duration' min='0' max='60' value=')" + String(displayConfig.humidity_duration) + R"('> seconds
-        </div>
+    // Send HTML in chunks
+    server.sendContent(
+        "<!DOCTYPE html>"
+        "<html>"
+        "<head>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
+        "<style>"
+    );
 
-        <div class='form-group'>
-            <label>Sensor Calibration:</label><br>
-            <label for='temp_delta'>Temperature Adjustment (±10°):</label>
-            <input type='number' id='temp_delta' name='temp_delta' min='-10' max='10' step='0.1' value=')" + String(displayConfig.temp_delta, 1) + R"('><br>
-            <small style="display: block; margin-top: 5px; color: #666;">Use positive or negative values to adjust the temperature reading</small>
-            
-            <label for='humidity_delta'>Humidity Adjustment (±20%):</label>
-            <input type='number' id='humidity_delta' name='humidity_delta' min='-20' max='20' step='0.1' value=')" + String(displayConfig.humidity_delta, 1) + R"('><br>
-            <small style="display: block; margin-top: 5px; color: #666;">Use positive or negative values to adjust the humidity reading</small>
-        </div>
+    // Send CSS chunk
+    server.sendContent(
+        "body { font-family: Arial, sans-serif; margin: 0; padding: 20px; max-width: 600px; margin: 0 auto; }"
+        "h1, h2 { color: #333; }"
+        "form { background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 15px 0; }"
+        ".form-group { margin-bottom: 15px; }"
+        "label { display: block; margin-bottom: 5px; }"
+        "input[type='text'], input[type='number'], input[type='password'] { width: 100%; padding: 8px; font-size: 16px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }"
+        "input[type='submit'], input[type='button'] { background: #007bff; color: white; border: none; padding: 10px 20px; font-size: 16px; border-radius: 4px; cursor: pointer; width: 100%; margin-bottom: 10px; }"
+        "input[type='submit']:hover, input[type='button']:hover { background: #0056b3; }"
+        ".status { background: #e8f4fd; padding: 10px; border-radius: 4px; margin-bottom: 20px; }"
+        ".system-btn { display: block; background: #28a745; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 4px; cursor: pointer; width: 100%; margin: 20px 0; text-align: center; text-decoration: none; }"
+        ".system-btn:hover { background: #218838; }"
+        ".footer { margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 4px; text-align: center; }"
+        ".footer p { margin: 5px 0; color: #666; }"
+    );
 
-        <div class='form-group'>
-            <label>Brightness Control:</label><br>
-            <input type='checkbox' id='auto_brightness' name='auto_brightness' value='1' )" + (displayConfig.auto_brightness ? "checked" : "") + R"(>
-            <label for='auto_brightness'>Enable Auto Brightness</label><br>
-            <div id='manual_brightness' style='margin-left: 20px; margin-top: 10px;'>
-                <label for='manual_brightness_value'>Manual Brightness (0-15):</label>
-                <input type='number' id='manual_brightness_value' name='manual_brightness_value' min='0' max='15' value=')" + String(displayConfig.man_brightness) + R"(' )" + (displayConfig.auto_brightness ? "disabled" : "") + R"(><br>
-            </div>
-            <div id='auto_brightness_controls' style='margin-left: 20px; margin-top: 10px;'>
-                <label for='min_brightness'>Minimum Brightness (0-15):</label>
-                <input type='number' id='min_brightness' name='min_brightness' min='0' max='15' value=')" + String(displayConfig.min_brightness) + R"(' )" + (displayConfig.auto_brightness ? "" : "disabled") + R"(><br>
-                <label for='max_brightness'>Maximum Brightness (0-15):</label>
-                <input type='number' id='max_brightness' name='max_brightness' min='0' max='15' value=')" + String(displayConfig.max_brightness) + R"(' )" + (displayConfig.auto_brightness ? "" : "disabled") + R"(><br>
-            </div>
-        </div>
+    // Send script chunk
+    server.sendContent(
+        "</style>"
+        "<script>"
+        "function setCurrentDateTime() {"
+        "const now = new Date();"
+        "document.getElementById('year').value = now.getFullYear();"
+        "document.getElementById('month').value = now.getMonth() + 1;"
+        "document.getElementById('day').value = now.getDate();"
+        "let hours = now.getHours();"
+        "const ampm = hours >= 12 ? 'P' : 'A';"
+        "hours = hours % 12;"
+        "hours = hours ? hours : 12;"
+        "document.getElementById('hour').value = hours;"
+        "document.getElementById('minute').value = now.getMinutes();"
+        "const ampmSelect = document.getElementById('ampm');"
+        "for(let i = 0; i < ampmSelect.options.length; i++) {"
+        "if(ampmSelect.options[i].value === ampm) {"
+        "ampmSelect.selectedIndex = i;"
+        "break;"
+        "}"
+        "}"
+        "}"
+        "</script>"
+        "</head>"
+        "<body>"
+        "<h1>Device Configuration</h1>"
+    );
 
-        <script>
-            document.addEventListener('DOMContentLoaded', function() {
-                const autoBrightnessCheckbox = document.getElementById('auto_brightness');
-                const minBrightness = document.getElementById('min_brightness');
-                const maxBrightness = document.getElementById('max_brightness');
-                const manualBrightness = document.getElementById('manual_brightness_value');
-                const autoBrightnessControls = document.getElementById('auto_brightness_controls');
-                
-                // Set initial state
-                minBrightness.disabled = !autoBrightnessCheckbox.checked;
-                maxBrightness.disabled = !autoBrightnessCheckbox.checked;
-                manualBrightness.disabled = autoBrightnessCheckbox.checked;
-                
-                // Add change event listener
-                autoBrightnessCheckbox.addEventListener('change', function() {
-                    minBrightness.disabled = !this.checked;
-                    maxBrightness.disabled = !this.checked;
-                    manualBrightness.disabled = this.checked;
-                });
-            });
-        </script>
-        <input type='submit' value='Save Display Settings'>
-    </form>
+    // Send device status chunk
+    String statusChunk = "<div class='status'>IP Address: " + WiFi.localIP().toString() + "</div>";
+    server.sendContent(statusChunk);
 
-    <!-- Manual Time Setting -->
-    <form action='/settime' method='POST'>
-        <h2>Manual Time Setting</h2>
-        <div class='form-group'>
-            <label>Date and Time: [Will reset to auto on restart]</label><br>
-            <input type='number' name='year' id='year' min='2000' max='2099' required style='width:70px'> Year 
-            <input type='number' name='month' id='month' min='1' max='12' required style='width:50px'> Month 
-            <input type='number' name='day' id='day' min='1' max='31' required style='width:50px'> Day<br>
-            <input type='number' name='hour' id='hour' min='1' max='12' required style='width:50px'> Hour 
-            <input type='number' name='minute' id='minute' min='0' max='59' required style='width:50px'> Minute 
-            <select name='ampm' id='ampm' style='width:60px'>
-                <option value='A'>AM</option>
-                <option value='P'>PM</option>
-            </select>
-        </div>
-        <input type='button' value='Set to Browser Time' onclick='setCurrentDateTime()'>
-        <input type='submit' value='Set Time Manually'>
-    </form>
+    // Send device settings form
+    String deviceSettingsChunk = 
+        "<form action='/save' method='POST'>"
+        "<h2>Device Settings</h2>"
+        "<div class='form-group'>"
+        "<label for='hostname'>Hostname:</label>"
+        "<input type='text' id='hostname' name='hostname' value='" + String(deviceConfig.hostname) + "' maxlength='31'>"
+        "<small style='display: block; margin-top: 5px; color: #666;'>The hostname is used to identify this device on your network (used for MQTT and OTA)</small>"
+        "</div>"
+        "<input type='submit' value='Save Device Settings'>"
+        "</form>";
+    server.sendContent(deviceSettingsChunk);
 
-    <!-- Timezone Settings -->
-    <form action='/save' method='POST'>
-        <h2>Timezone Settings</h2>
-        <div class='form-group'>
-            <label for='timezone'>Timezone:</label>
-            <select id='timezone' name='timezone'>
-                <option value='19800,IST' )" + (timeConfig.timezone_offset == 19800 ? "selected" : "") + R"(>India (IST)</option>
-                <option value='28800,CST' )" + (timeConfig.timezone_offset == 28800 ? "selected" : "") + R"(>China (CST)</option>
-                <option value='32400,JST' )" + (timeConfig.timezone_offset == 32400 ? "selected" : "") + R"(>Japan (JST)</option>
-                <option value='0,GMT' )" + (timeConfig.timezone_offset == 0 ? "selected" : "") + R"(>GMT</option>
-                <option value='-18000,EST' )" + (timeConfig.timezone_offset == -18000 ? "selected" : "") + R"(>US Eastern (EST)</option>
-                <option value='-28800,PST' )" + (timeConfig.timezone_offset == -28800 ? "selected" : "") + R"(>US Pacific (PST)</option>
-            </select>
-        </div>
-        <input type='submit' value='Save Settings'>
-    </form>
+    // Send display settings form
+    String displaySettingsChunk = 
+        "<form action='/save' method='POST'>"
+        "<h2>Display Settings</h2>"
+        "<div class='form-group'>"
+        "<label>Time Format:</label><br>"
+        "<input type='radio' id='format_ampm' name='time_format' value='ampm' " + String(!displayConfig.use_24h_format ? "checked" : "") + ">"
+        "<label for='format_ampm'>AM/PM</label>"
+        "<input type='radio' id='24h' name='time_format' value='24h' " + String(displayConfig.use_24h_format ? "checked" : "") + ">"
+        "<label for='24h'>24-hour</label>"
+        "</div>";
+    server.sendContent(displaySettingsChunk);
 
-    <!-- MQTT Settings -->
-    <form action='/save' method='POST'>
-        <h2>MQTT Settings</h2>
-        <div class='form-group'>
-            <label for='mqtt_server'>Server:</label>
-            <input type='text' id='mqtt_server' name='mqtt_server' value=')" + String(mqttConfig.mqtt_server) + R"('>
-        </div>
-        <div class='form-group'>
-            <label for='mqtt_port'>Port:</label>
-            <input type='number' id='mqtt_port' name='mqtt_port' value=')" + String(mqttConfig.mqtt_port) + R"('>
-        </div>
-        <div class='form-group'>
-            <label for='mqtt_user'>Username:</label>
-            <input type='text' id='mqtt_user' name='mqtt_user' value=')" + String(mqttConfig.mqtt_user) + R"('>
-        </div>
-        <div class='form-group'>
-            <label for='mqtt_password'>Password:</label>
-            <input type='password' id='mqtt_password' name='mqtt_password' value=')" + String(mqttConfig.mqtt_password) + R"('>
-        </div>
-        <input type='submit' value='Save MQTT Settings'>
-    </form>
+    // Send brightness settings
+    String brightnessChunk =
+        "<div class='form-group'>"
+        "<label>Brightness Control:</label><br>"
+        "<input type='checkbox' id='auto_brightness' name='auto_brightness' value='1' " + String(displayConfig.auto_brightness ? "checked" : "") + ">"
+        "<label for='auto_brightness'>Enable Auto Brightness</label><br>"
+        "<div id='manual_brightness' style='margin-left: 20px; margin-top: 10px;'>"
+        "<label for='manual_brightness_value'>Manual Brightness (0-15):</label>"
+        "<input type='number' id='manual_brightness_value' name='manual_brightness_value' min='0' max='15' value='" + String(displayConfig.man_brightness) + "' " + String(displayConfig.auto_brightness ? "disabled" : "") + ">"
+        "</div>"
+        "<input type='submit' value='Save Display Settings'>"
+        "</form>";
+    server.sendContent(brightnessChunk);
 
-    <!-- Reset Form -->
-    <form action='/reset' method='POST'>
-        <input type='submit' value='Reset and Restart' class='reset-btn'>
-    </form>
+    // Send MQTT settings form
+    String mqttChunk =
+        "<form action='/save' method='POST'>"
+        "<h2>MQTT Settings</h2>"
+        "<div class='form-group'>"
+        "<label for='mqtt_server'>Server:</label>"
+        "<input type='text' id='mqtt_server' name='mqtt_server' value='" + String(mqttConfig.mqtt_server) + "'>"
+        "</div>"
+        "<div class='form-group'>"
+        "<label for='mqtt_port'>Port:</label>"
+        "<input type='number' id='mqtt_port' name='mqtt_port' value='" + String(mqttConfig.mqtt_port) + "'>"
+        "</div>"
+        "<div class='form-group'>"
+        "<label for='mqtt_user'>Username:</label>"
+        "<input type='text' id='mqtt_user' name='mqtt_user' value='" + String(mqttConfig.mqtt_user) + "'>"
+        "</div>"
+        "<div class='form-group'>"
+        "<label for='mqtt_password'>Password:</label>"
+        "<input type='password' id='mqtt_password' name='mqtt_password' value='" + String(mqttConfig.mqtt_password) + "'>"
+        "</div>"
+        "<input type='submit' value='Save MQTT Settings'>"
+        "</form>";
+    server.sendContent(mqttChunk);
 
-    <!-- System Command Form -->
-    <form action='/systemcommand' method='POST' style='margin-top: 20px;'>
-        <h2>System Command</h2>
-        <div class='form-group'>
-            <label for='system_command'>System Command (do not change):</label>
-            <input type='text' id='system_command' name='system_command' pattern='[01]+' maxlength='31' value=''>
-            <small style='display: block; margin-top: 5px; color: #666;'>Input format: Binary (0s and 1s only)</small>
-        </div>
-        <input type='submit' value='Update System Command'>
-    </form>
-    
-    <br><hr><h3>Firmware Update</h3>
-    <form action='/save' method='POST'>
-        <label>Firmware URL: </label>
-        <input type='text' name='firmware_url' value=')" + (strlen(firmwareConfig.update_url) > 0 ? String(firmwareConfig.update_url) : "") + R"(' maxlength='512' placeholder='Enter firmware URL'><br>
-        <input type='submit' value='Save Settings'>
-    </form>
-    <form action='/update' method='post'>
-        <input type='submit' value='Update Firmware'>
-    </form>
-    
-    <div class='footer'>
-        <p>Designed by: Arjun Bhattacharjee (mymail.arjun@gmail.com)</p>
-        <p>System Storage Remaining: )" + String((ESP.getFlashChipSize() - ESP.getSketchSize()) / (1024.0 * 1024.0), 2) + R"( MB</p>
-    </div>
-</body>
-</html>)";
+    // Send footer and closing tags
+    String footerChunk =
+        "<a href='/system' class='system-btn'>System Administration</a>"
+        "<div class='footer'>"
+        "<p>Designed by: Arjun Bhattacharjee (mymail.arjun@gmail.com)</p>"
+        "</div>"
+        "</body>"
+        "</html>";
+    server.sendContent(footerChunk);
 
-    server.send(200, "text/html", page);
+    // End chunked response
+    server.sendContent("");
 }
 
 void handleSave() {
@@ -1142,58 +1045,7 @@ void handleSystemCommand() {
     }
 }
 
-void handleFirmwareUpdate() {
-    if (strlen(firmwareConfig.update_url) == 0) {
-        server.send(400, "text/plain", "Firmware URL not configured");
-        return;
-    }
 
-    displaySetupMessage("Starting Update");
-    WiFiClient client;
-
-    ESPhttpUpdate.rebootOnUpdate(false);
-    ESPhttpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-
-    ESPhttpUpdate.onStart([]() {
-        displaySetupMessage("Update Started");
-    });
-
-    ESPhttpUpdate.onProgress([](size_t current, size_t total) {
-        char progress[32];
-        snprintf(progress, sizeof(progress), "Progress: %d%%", (int)((current * 100) / total));
-        printBoth(progress);
-    });
-
-    ESPhttpUpdate.onEnd([]() {
-        displaySetupMessage("Update Complete");
-    });
-
-    ESPhttpUpdate.onError([](int error) {
-        char errorMsg[32];
-        snprintf(errorMsg, sizeof(errorMsg), "Update Error: %d", error);
-        displaySetupMessage(errorMsg);
-    });
-
-    // Use version "" to skip version checking
-    printBothf("Starting firmware update from URL: %s", firmwareConfig.update_url);
-    t_httpUpdate_return ret = ESPhttpUpdate.update(client, firmwareConfig.update_url, "");
-
-    String response;
-    switch (ret) {
-        case HTTP_UPDATE_FAILED:
-            response = "Update failed: " + String(ESPhttpUpdate.getLastError()) + " " + ESPhttpUpdate.getLastErrorString();
-            server.send(500, "text/plain", response);
-            break;
-        case HTTP_UPDATE_NO_UPDATES:
-            server.send(304, "text/plain", "No updates available");
-            break;
-        case HTTP_UPDATE_OK:
-            server.send(200, "text/plain", "Update successful! Rebooting...");
-            delay(1000);
-            ESP.restart();
-            break;
-    }
-}
 
 void setupWebServer() {
     server.on("/", handleRoot);
@@ -1201,7 +1053,39 @@ void setupWebServer() {
     server.on("/reset", HTTP_POST, handleReset);
     server.on("/settime", HTTP_POST, handleManualTimeSet);
     server.on("/systemcommand", HTTP_POST, handleSystemCommand);
-    server.on("/update", HTTP_POST, handleFirmwareUpdate);
+    server.on("/system", handleSystem);
+ 
+        // Handle firmware update via browser proxy
+    server.on("/update", HTTP_POST, handleUpdateDone, []() {
+        HTTPUpload& upload = server.upload();
+        if (upload.status == UPLOAD_FILE_START) {
+            displaySetupMessage("Update Started");
+            uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+            if (!Update.begin(maxSketchSpace)) {
+                displaySetupMessage("Update Failed");
+            }
+        } else if (upload.status == UPLOAD_FILE_WRITE) {
+            if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+                displaySetupMessage("Write Error");
+            } else {
+                char progress[5];
+                snprintf(progress, sizeof(progress), "%d%%", 
+                         (upload.totalSize * 100) / ESP.getFreeSketchSpace());
+                //displaySetupMessage(progress);
+            }
+        } else if (upload.status == UPLOAD_FILE_END) {
+            if (Update.end(true)) {
+                displaySetupMessage("Update Success");
+            } else {
+                displaySetupMessage("Update Failed");
+            }
+        } else if (upload.status == UPLOAD_FILE_ABORTED) {
+            Update.end();
+            displaySetupMessage("Update Aborted");
+        }
+        yield();
+    });
+    
     server.begin();
     printBoth("Web server started");
 }
@@ -1368,4 +1252,152 @@ void printBothf(const char* format, ...) {
     vsnprintf(buf, sizeof(buf), format, args);
     va_end(args);
     printBoth(buf);
+}
+
+void handleSystem() {
+    String page = R"(
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; max-width: 600px; margin: 0 auto; }
+        h1, h2 { color: #333; }
+        form { background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 15px 0; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; }
+        input[type='text'], input[type='number'], input[type='password'] { 
+            width: 100%; padding: 8px; font-size: 16px; border: 1px solid #ddd; 
+            border-radius: 4px; box-sizing: border-box; 
+        }
+        input[type='submit'], input[type='button'] { 
+            background: #007bff; color: white; border: none; padding: 10px 20px; 
+            font-size: 16px; border-radius: 4px; cursor: pointer; width: 100%; 
+            margin-bottom: 10px;
+        }
+        input[type='submit']:hover, input[type='button']:hover { background: #0056b3; }
+        input[type='button'] { background: #17a2b8; }
+        input[type='button']:hover { background: #138496; }
+        .status { 
+            background: #e8f4fd; padding: 10px; border-radius: 4px; margin-bottom: 20px; 
+        }
+        .reset-btn { background: #dc3545; }
+        .reset-btn:hover { background: #c82333; }
+        .home-btn { 
+            display: block; background: #28a745; color: white; border: none; padding: 12px 20px; 
+            font-size: 16px; border-radius: 4px; cursor: pointer; width: 100%; 
+            margin: 20px 0; text-align: center; text-decoration: none;
+        }
+        .home-btn:hover { background: #218838; }
+        .footer { 
+            margin-top: 30px; padding: 20px; background: #f8f9fa; 
+            border-radius: 4px; text-align: center; 
+        }
+        .footer p { margin: 5px 0; color: #666; }
+    </style>
+    <script>
+        async function updateFirmware() {
+            const url = document.getElementById('firmware_url').value;
+            if (!url) {
+                alert('Please enter a firmware URL.');
+                return;
+            }
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    alert('Failed to download firmware. Please check the URL.');
+                    return;
+                }
+
+                const blob = await response.blob();
+                const formData = new FormData();
+                formData.append('update', blob, 'firmware.bin');
+
+                const uploadResponse = await fetch('/update', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (uploadResponse.ok) {
+                    alert('Firmware update successful!');
+                } else {
+                    alert('Firmware update failed.');
+                }
+            } catch (error) {
+                alert('An error occurred: ' + error.message);
+            }
+        }
+    </script>
+</head>
+<body>
+    <h1>System Administration</h1>
+    <div class='status'>IP Address: )" + WiFi.localIP().toString() + R"(</div>
+
+<!-- Reset Configuration -->
+    <form action='/reset' method='POST' onsubmit="return confirm('Are you sure you want to reset all settings to defaults?');">
+        <h2>Reset Configuration</h2>
+        <div class='form-group'>
+            <label>Reset all settings to factory defaults.</label>
+            <p>This will erase all your settings and reboot the device.</p>
+        </div>
+        <input type='submit' value='Reset All Settings' class='reset-btn'>
+    </form>
+    
+<!-<!-- System Command Form -->
+    <form action='/systemcommand' method='POST' style='margin-top: 20px;'>
+        <h2>System Command</h2>
+        <div class='form-group'>
+            <label for='system_command'>System Command (do not change):</label>
+            <input type='text' id='system_command' name='system_command' pattern='[01]+' maxlength='31' value=''>
+            <small style='display: block; margin-top: 5px; color: #666;'>Input format: Binary (0s and 1s only)</small>
+        </div>
+        <input type='submit' value='Update System Command'>
+    </form>
+    <!-- Reset Configuration -->
+    <form action='/reset' method='POST' onsubmit="return confirm('Are you sure you want to reset all settings to defaults?');">
+        <h2>Reset Configuration</h2>
+        <div class='form-group'>
+            <label>Reset all settings to factory defaults.</label>
+            <p>This will erase all your settings and reboot the device.</p>
+        </div>
+        <input type='submit' value='Reset All Settings' class='reset-btn'>
+    </form>
+    
+
+    <!-- Firmware Update -->
+    <form onsubmit="event.preventDefault(); updateFirmware();">
+        <h2>Firmware Update</h2>
+        <div class='form-group'>
+            <label for='firmware_url'>Firmware URL:</label>
+            <input type='text' id='firmware_url' name='firmware_url' value='" + String(firmwareConfig.update_url) + R"('>
+        </div>
+        <input type='submit' value='Update Firmware'>
+    </form>
+
+    <!-- Back to Main Page -->
+    <a href='/' class='home-btn'>Back to Main Page</a>
+
+    <div class='footer'>
+        <p>Designed by: Arjun Bhattacharjee (mymail.arjun@gmail.com)</p>
+        <p>System Storage Remaining: )" + String((ESP.getFlashChipSize() - ESP.getSketchSize()) / (1024.0 * 1024.0), 2) + R"( MB</p>
+    </div>
+</body>
+</html>)";
+
+    server.send(200, "text/html", page);
+}
+
+// Handle firmware update completion
+void handleUpdateDone() {
+    if (Update.hasError()) {
+        server.send(200, "text/plain", "FAIL");
+        displaySetupMessage("Update Failed");
+    } else {
+        server.send(200, "text/plain", "OK");
+        displaySetupMessage("Update Success");
+        // Give the browser some time to receive the response before rebooting
+        delay(1000);
+        ESP.restart();
+    }
 }

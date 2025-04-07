@@ -149,6 +149,4 @@ void setDefaultSystemCommandConfig();
 void loadFirmwareConfig();
 void saveFirmwareConfig();
 void setDefaultFirmwareConfig();
-void handleFirmwareUpdate();
 void displayUpdateProgress(int progress, const char* status);
-void setupFirmwareUpdates();

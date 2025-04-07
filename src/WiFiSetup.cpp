@@ -1370,7 +1370,7 @@ void handleSystem() {
         <h2>Firmware Update</h2>
         <div class='form-group'>
             <label for='firmware_url'>Firmware URL:</label>
-            <input type='text' id='firmware_url' name='firmware_url' value='" + String(firmwareConfig.update_url) + R"('>
+            <input type='text' id='firmware_url' name='firmware_url' value=')" + String(firmwareConfig.update_url) + R"('>
         </div>
         <input type='submit' value='Update Firmware'>
     </form>

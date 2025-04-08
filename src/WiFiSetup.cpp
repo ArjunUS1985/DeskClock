@@ -397,32 +397,63 @@ void loadSystemCommandConfig() {
 }
 
 void loadFirmwareConfig() {
-    File file = LittleFS.open("/firmware_config.json", "r");
-    if (!file) {
+    if (!LittleFS.begin()) {
+        printBoth("Failed to mount file system");
         setDefaultFirmwareConfig();
         return;
     }
-    
+
+    if (!LittleFS.exists("/firmware_config.json")) {
+        printBoth("No firmware config file found");
+        setDefaultFirmwareConfig();
+        return;
+    }
+
+    File file = LittleFS.open("/firmware_config.json", "r");
+    if (!file) {
+        printBoth("Failed to open firmware config file");
+        setDefaultFirmwareConfig();
+        return;
+    }
+
     StaticJsonDocument<512> doc;
     DeserializationError error = deserializeJson(doc, file);
     file.close();
-    
+
     if (error) {
+        printBoth("Failed to parse firmware config file");
         setDefaultFirmwareConfig();
         return;
     }
-    
-    strlcpy(firmwareConfig.update_url, doc["url"] | "", sizeof(firmwareConfig.update_url));
+
+    if (doc.containsKey("url")) {
+        strlcpy(firmwareConfig.update_url, doc["url"], sizeof(firmwareConfig.update_url));
+        printBothf("Loaded firmware URL: %s", firmwareConfig.update_url);
+    } else {
+        setDefaultFirmwareConfig();
+    }
 }
 
 void saveFirmwareConfig() {
+    if (!LittleFS.begin()) {
+        printBoth("Failed to mount file system");
+        return;
+    }
+
     StaticJsonDocument<512> doc;
     doc["url"] = firmwareConfig.update_url;
-    
+
     File file = LittleFS.open("/firmware_config.json", "w");
-    if (!file) return;
-    
-    serializeJson(doc, file);
+    if (!file) {
+        printBoth("Failed to open firmware config file for writing");
+        return;
+    }
+
+    if (serializeJson(doc, file) == 0) {
+        printBoth("Failed to write firmware config file");
+    } else {
+        printBoth("Firmware config saved successfully");
+    }
     file.close();
 }
 

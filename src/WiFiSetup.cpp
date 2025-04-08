@@ -23,6 +23,7 @@ void handleManualTimeSet();
 void handleSystemCommand();
 void handleSystem();
 void handleUpdateDone(); // Add forward declaration for handleUpdateDone
+void handlePerformUpdate(); // Add forward declaration for handlePerformUpdate
 
 ESP8266WebServer server(80);
 WiFiClient espClient;
@@ -182,8 +183,10 @@ void setDefaultSystemCommandConfig() {
 }
 
 void setDefaultFirmwareConfig() {
-    firmwareConfig.update_url[0] = '\0';
-    saveFirmwareConfig();
+    const char* defaultUrl = "https://github.com/ArjunUS1985/DeskClock/blob/main/fwroot/firmware.bin";
+    strncpy(firmwareConfig.update_url, defaultUrl, sizeof(firmwareConfig.update_url) - 1);
+    firmwareConfig.update_url[sizeof(firmwareConfig.update_url) - 1] = '\0';
+    printBothf("Set default firmware URL: %s", firmwareConfig.update_url);
 }
 
 void loadMQTTConfig() {
@@ -428,7 +431,9 @@ void loadFirmwareConfig() {
 
     if (doc.containsKey("url")) {
         strlcpy(firmwareConfig.update_url, doc["url"], sizeof(firmwareConfig.update_url));
-        printBothf("Loaded firmware URL: %s", firmwareConfig.update_url);
+        if (strlen(firmwareConfig.update_url) == 0) {
+            setDefaultFirmwareConfig();
+        }
     } else {
         setDefaultFirmwareConfig();
     }
@@ -1085,6 +1090,7 @@ void setupWebServer() {
     server.on("/settime", HTTP_POST, handleManualTimeSet);
     server.on("/systemcommand", HTTP_POST, handleSystemCommand);
     server.on("/system", handleSystem);
+    server.on("/performUpdate", HTTP_GET, handlePerformUpdate);
  
         // Handle firmware update via browser proxy
     server.on("/update", HTTP_POST, handleUpdateDone, []() {
@@ -1326,45 +1332,10 @@ void handleSystem() {
         }
         .footer p { margin: 5px 0; color: #666; }
     </style>
-    <script>
-        async function updateFirmware() {
-            const url = document.getElementById('firmware_url').value;
-            if (!url) {
-                alert('Please enter a firmware URL.');
-                return;
-            }
-
-            try {
-                const response = await fetch(url);
-                if (!response.ok) {
-                    alert('Failed to download firmware. Please check the URL.');
-                    return;
-                }
-
-                const blob = await response.blob();
-                const formData = new FormData();
-                formData.append('update', blob, 'firmware.bin');
-
-                const uploadResponse = await fetch('/update', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (uploadResponse.ok) {
-                    alert('Firmware update successful!');
-                } else {
-                    alert('Firmware update failed.');
-                }
-            } catch (error) {
-                alert('An error occurred: ' + error.message);
-            }
-        }
-    </script>
 </head>
 <body>
     <h1>System Administration</h1>
     <div class='status'>IP Address: )" + WiFi.localIP().toString() + R"(</div>
-
 <!-- Reset Configuration -->
     <form action='/reset' method='POST' onsubmit="return confirm('Are you sure you want to reset all settings to defaults?');">
         <h2>Reset Configuration</h2>
@@ -1394,16 +1365,18 @@ void handleSystem() {
         </div>
         <input type='submit' value='Reset All Settings' class='reset-btn'>
     </form>
-    
-
     <!-- Firmware Update -->
-    <form onsubmit="event.preventDefault(); updateFirmware();">
+    <form action='/saveFirmwareURL' method='POST'>
         <h2>Firmware Update</h2>
         <div class='form-group'>
             <label for='firmware_url'>Firmware URL:</label>
             <input type='text' id='firmware_url' name='firmware_url' value=')" + String(firmwareConfig.update_url) + R"('>
         </div>
-        <input type='submit' value='Update Firmware'>
+        <input type='submit' value='Save Firmware URL'>
+    </form>
+
+    <form action='/performUpdate' method='GET'>
+        <input type='submit' value='Perform Update'>
     </form>
 
     <!-- Back to Main Page -->
@@ -1417,6 +1390,86 @@ void handleSystem() {
 </html>)";
 
     server.send(200, "text/html", page);
+}
+
+void handlePerformUpdate() {
+    // ...existing code...
+    if (strlen(firmwareConfig.update_url) == 0) {
+        server.send(200, "text/plain", "Set Update URL on System Settings page");
+        return;
+    }
+    String page = R"(
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 20px auto; padding: 0 20px; }
+        .status { margin: 20px 0; padding: 15px; border-radius: 4px; }
+        .updating { background: #fff3cd; color: #856404; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .btn { display: none; padding: 10px 20px; background: #007bff; color: white; 
+               text-decoration: none; border-radius: 4px; margin-top: 20px; }
+        .btn:hover { background: #0056b3; }
+    </style>
+    <script>
+        async function performUpdate() {
+            const statusDiv = document.getElementById('status');
+            const backButton = document.getElementById('backButton');
+            
+            try {
+                const url = ')" + String(firmwareConfig.update_url) + R"(';
+                if (url.length === 0) {
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = 'Set Update URL on System Settings page';
+                    backButton.style.display = 'inline-block';
+                    return;
+                }
+                statusDiv.className = 'status updating';
+                statusDiv.textContent = 'Downloading firmware...';
+                
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error('Failed to download firmware');
+                }
+
+                const blob = await response.blob();
+                const formData = new FormData();
+                formData.append('update', blob, 'firmware.bin');
+
+                statusDiv.textContent = 'Installing firmware...';
+                const uploadResponse = await fetch('/update', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (uploadResponse.ok) {
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = 'Update successful! Device will restart automatically.';
+                } else {
+                    throw new Error('Firmware installation failed');
+                }
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = 'Update failed: ' + error.message;
+            } finally {
+                backButton.style.display = 'inline-block';
+            }
+        }
+
+        window.onload = performUpdate;
+    </script>
+</head>
+<body>
+    <h1>Firmware Update</h1>
+    <div id="status" class="status updating">Starting update...</div>
+    <a href="/" class="btn" id="backButton">Back to Home</a>
+</body>
+</html>)";
+
+    server.send(200, "text/html", page);
+    // ...existing code...
 }
 
 // Handle firmware update completion

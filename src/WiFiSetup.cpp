@@ -187,7 +187,7 @@ void setDefaultSystemCommandConfig() {
 }
 
 void setDefaultFirmwareConfig() {
-    const char* defaultUrl = "https://github.com/ArjunUS1985/DeskClock/blob/main/fwroot/firmware.bin";
+    const char* defaultUrl = "https://arjunus1985.github.io/DeskClock/fwroot/firmware.bin";
     strncpy(firmwareConfig.update_url, defaultUrl, sizeof(firmwareConfig.update_url) - 1);
     firmwareConfig.update_url[sizeof(firmwareConfig.update_url) - 1] = '\0';
     printBothf("Set default firmware URL: %s", firmwareConfig.update_url);
@@ -734,6 +734,21 @@ void handleRoot() {
         "</body>"
         "</html>";
     server.sendContent(footerChunk);
+
+    // Add JavaScript for toggling manual brightness
+    server.sendContent(
+        "<script>"
+        "document.addEventListener('DOMContentLoaded', function() {"
+        "  const autoBrightnessCheckbox = document.getElementById('auto_brightness');"
+        "  const manualBrightnessInput = document.getElementById('manual_brightness_value');"
+        "  function toggleManualBrightness() {"
+        "    manualBrightnessInput.disabled = autoBrightnessCheckbox.checked;"
+        "  }"
+        "  autoBrightnessCheckbox.addEventListener('change', toggleManualBrightness);"
+        "  toggleManualBrightness(); // Initialize on page load"
+        "});"
+        "</script>"
+    );
 
     // End chunked response
     server.sendContent("");

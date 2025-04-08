@@ -24,6 +24,10 @@ void handleSystemCommand();
 void handleSystem();
 void handleUpdateDone(); // Add forward declaration for handleUpdateDone
 void handlePerformUpdate(); // Add forward declaration for handlePerformUpdate
+void handleSaveFirmwareURL(); // Add forward declaration for handleSaveFirmwareURL
+
+void displaySetupMessage(const char* message);
+void displaySetupMessageProgress(const char* progress);
 
 ESP8266WebServer server(80);
 WiFiClient espClient;
@@ -1081,7 +1085,37 @@ void handleSystemCommand() {
     }
 }
 
-
+void handleSaveFirmwareURL() {
+    if (server.hasArg("firmware_url")) {
+        strncpy(firmwareConfig.update_url, server.arg("firmware_url").c_str(), sizeof(firmwareConfig.update_url) - 1);
+        firmwareConfig.update_url[sizeof(firmwareConfig.update_url) - 1] = '\0';
+        saveFirmwareConfig();
+        
+        String page = R"(
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; max-width: 600px; margin: 0 auto; }
+        h1 { color: #333; }
+        .status { background: #e8fff4; padding: 10px; border-radius: 4px; margin: 20px 0; color: #28a745; }
+        .btn { display: inline-block; padding: 10px 20px; background: #007bff; color: white; 
+               text-decoration: none; border-radius: 4px; margin-top: 20px; }
+        .btn:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>Firmware URL Saved</h1>
+    <div class='status'>The firmware URL has been updated successfully.</div>
+    <a href='/system' class='btn'>Go Back</a>
+</body>
+</html>)";
+        server.send(200, "text/html", page);
+    } else {
+        server.send(400, "text/plain", "Missing firmware_url parameter");
+    }
+}
 
 void setupWebServer() {
     server.on("/", handleRoot);
@@ -1091,6 +1125,7 @@ void setupWebServer() {
     server.on("/systemcommand", HTTP_POST, handleSystemCommand);
     server.on("/system", handleSystem);
     server.on("/performUpdate", HTTP_GET, handlePerformUpdate);
+    server.on("/saveFirmwareURL", HTTP_POST, handleSaveFirmwareURL);
  
         // Handle firmware update via browser proxy
     server.on("/update", HTTP_POST, handleUpdateDone, []() {
@@ -1108,7 +1143,8 @@ void setupWebServer() {
                 char progress[5];
                 snprintf(progress, sizeof(progress), "%d%%", 
                          (upload.totalSize * 100) / ESP.getFreeSketchSpace());
-                //displaySetupMessage(progress);
+                         
+                displaySetupMessageProgress(progress);
             }
         } else if (upload.status == UPLOAD_FILE_END) {
             if (Update.end(true)) {

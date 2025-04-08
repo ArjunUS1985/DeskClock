@@ -121,7 +121,11 @@ void displaySetupMessage(const char* message) {
         delay(10); // Small delay to ensure smooth animation
     }
 }
-
+void displaySetupMessageProgress(const char* message) {
+   
+    setupDisplay.displayText(message, PA_CENTER, 0, 0, PA_NO_EFFECT, PA_NO_EFFECT);
+                         setupDisplay.displayAnimate(); // Single call without waiting
+}
 void abnormalLoop() {
     // More comprehensive messages to help users connect
     const char* messages[] = {
@@ -397,7 +401,8 @@ void setup() {
     loadDisplayConfig();
     loadDeviceConfig();
     loadSystemCommandConfig(); // Load system command configuration
-    
+      // Load firmware configuration
+      loadFirmwareConfig();
     // Print system command status (only to Serial/Telnet, not display)
     printBoth("System command configuration loaded");
     
@@ -417,6 +422,8 @@ void setup() {
        myDisplay.setZoneEffect(0,true,PA_FLIP_LR);
    }
 }
+
+  
 }
 
 void loop() {

@@ -11,36 +11,33 @@ def after_build(source, target, env):
     print(f"Firmware path: {firmware_path}")
     print(f"Destination path: {destination_path}")
 
-    if os.path.exists(firmware_path):
-        os.makedirs(os.path.dirname(destination_path), exist_ok=True)
-        if os.path.exists(destination_path):
-            print("Removing existing firmware file to ensure Git detects the change.")
-            os.remove(destination_path)  # Remove the existing file
-        shutil.move(firmware_path, destination_path)
-        print(f"Moved firmware to {destination_path}")
+    # Delete the old firmware file if it exists
+    if os.path.exists(destination_path):
+        os.remove(destination_path)
+        print(f"Deleted old firmware from {destination_path}.")
 
-        # Explicitly remove and re-add the file to Git's index
-        try:
-            subprocess.run(["git", "rm", "--cached", destination_path], check=True)
-            print(f"Removed {destination_path} from Git index.")
-        except subprocess.CalledProcessError:
-            print(f"File {destination_path} was not in Git index.")
-
+        # Check in the delete to Git
         try:
             subprocess.run(["git", "add", destination_path], check=True)
-            print(f"Staged {destination_path} in Git.")
+            subprocess.run(["git", "commit", "-m", "deleted old fw"], check=True)
+            print("Checked in deletion of old firmware with comment 'deleted old fw'.")
         except subprocess.CalledProcessError as e:
-            print(f"Failed to stage {destination_path} in Git: {e}")
+            print(f"Failed to check in deletion of old firmware: {e}")
 
-        # Force add the file to Git
+    # Copy the new firmware file
+    if os.path.exists(firmware_path):
+        shutil.copy(firmware_path, destination_path)
+        print(f"Copied new firmware to {destination_path}.")
+
+        # Check in the new firmware to Git
         try:
-            subprocess.run(["git", "add", "-f", destination_path], check=True)
-            print(f"Force added {destination_path} to Git.")
+            subprocess.run(["git", "add", destination_path], check=True)
+            subprocess.run(["git", "commit", "-m", "New fw upload"], check=True)
+            print("Checked in new firmware with comment 'New fw upload'.")
         except subprocess.CalledProcessError as e:
-            print(f"Failed to force add {destination_path} to Git: {e}")
-
+            print(f"Failed to check in new firmware: {e}")
     else:
-        print("Firmware file not found!")
+        print("New firmware file not found!")
 
 def generate(env):
     print("Registering after_build script...")

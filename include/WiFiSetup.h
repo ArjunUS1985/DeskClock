@@ -1,4 +1,5 @@
 // Move WiFi-related functions to a new file
+
 #include "WiFiManager.h"
 #include "ESP8266WebServer.h"
 #include <PubSubClient.h>
@@ -9,7 +10,7 @@
 
 // Global variable declarations
 extern time_t lastTimeSync;
-
+extern float version;
 struct TimeConfig {
     int32_t timezone_offset;  // Offset from UTC in seconds
     char timezone_name[32];   // Human readable timezone name

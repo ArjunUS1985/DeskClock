@@ -12,6 +12,8 @@ DeviceConfig deviceConfig;  // Add DeviceConfig variable
 SystemCommandConfig systemCommandConfig; // Define the global SystemCommandConfig variable
 FirmwareConfig firmwareConfig;  // Add firmware config variable
 
+float version = 0.1f;
+
 // Declare the mqttCallback function
 void mqttCallback(char* topic, byte* payload, unsigned int length);
 

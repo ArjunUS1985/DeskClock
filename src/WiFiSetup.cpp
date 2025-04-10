@@ -689,19 +689,46 @@ void handleRoot() {
         "</div>";
     server.sendContent(displaySettingsChunk);
 
-    // Send brightness settings
+    // Add brightness settings with min, max, and manual brightness inputs
     String brightnessChunk =
         "<div class='form-group'>"
         "<label>Brightness Control:</label><br>"
         "<input type='checkbox' id='auto_brightness' name='auto_brightness' value='1' " + String(displayConfig.auto_brightness ? "checked" : "") + ">"
         "<label for='auto_brightness'>Enable Auto Brightness</label><br>"
+        "<div id='brightness_range' style='margin-left: 20px; margin-top: 10px;'>"
+        "<label for='min_brightness'>Min Brightness (0-15):</label>"
+        "<input type='number' id='min_brightness' name='min_brightness' min='0' max='15' value='" + String(displayConfig.min_brightness) + "' " + String(!displayConfig.auto_brightness ? "disabled" : "") + ">"
+        "<label for='max_brightness'>Max Brightness (0-15):</label>"
+        "<input type='number' id='max_brightness' name='max_brightness' min='0' max='15' value='" + String(displayConfig.max_brightness) + "' " + String(!displayConfig.auto_brightness ? "disabled" : "") + ">"
+        "</div>"
         "<div id='manual_brightness' style='margin-left: 20px; margin-top: 10px;'>"
-        "<label for='manual_brightness_value'>Manual Brightness (0-15):</label>"
-        "<input type='number' id='manual_brightness_value' name='manual_brightness_value' min='0' max='15' value='" + String(displayConfig.man_brightness) + "' " + String(displayConfig.auto_brightness ? "disabled" : "") + ">"
+        "<label for='man_brightness'>Manual Brightness (0-15):</label>"
+        "<input type='number' id='man_brightness' name='man_brightness' min='0' max='15' value='" + String(displayConfig.man_brightness) + "' " + String(displayConfig.auto_brightness ? "disabled" : "") + ">"
+        "</div>"
         "</div>"
         "<input type='submit' value='Save Display Settings'>"
         "</form>";
     server.sendContent(brightnessChunk);
+
+    // Add JavaScript for immediate toggling of min, max, and manual brightness inputs
+    server.sendContent(
+        "<script>"
+        "document.addEventListener('DOMContentLoaded', function() {"
+        "  const autoBrightnessCheckbox = document.getElementById('auto_brightness');"
+        "  const minBrightnessInput = document.getElementById('min_brightness');"
+        "  const maxBrightnessInput = document.getElementById('max_brightness');"
+        "  const manualBrightnessInput = document.getElementById('man_brightness');"
+        "  function toggleBrightnessInputs() {"
+        "    const autoEnabled = autoBrightnessCheckbox.checked;"
+        "    minBrightnessInput.disabled = !autoEnabled;"
+        "    maxBrightnessInput.disabled = !autoEnabled;"
+        "    manualBrightnessInput.disabled = autoEnabled;"
+        "  }"
+        "  autoBrightnessCheckbox.addEventListener('change', toggleBrightnessInputs);"
+        "  toggleBrightnessInputs(); // Initialize on page load"
+        "});"
+        "</script>"
+    );
 
     // Send MQTT settings form
     String mqttChunk =

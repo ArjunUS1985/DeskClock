@@ -32,7 +32,8 @@ def after_build(source, target, env):
         # Check in the new firmware to Git
         try:
             subprocess.run(["git", "add", destination_path], check=True)
-            subprocess.run(["git", "commit", "-m", "New fw upload"], check=True)
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            subprocess.run(["git", "commit", "-m", f"New fw upload - {timestamp}"], check=True)
             print("Checked in new firmware with comment 'New fw upload'.")
         except subprocess.CalledProcessError as e:
             print(f"Failed to check in new firmware: {e}")

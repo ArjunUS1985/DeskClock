@@ -697,9 +697,9 @@ void handleRoot() {
         "<label for='auto_brightness'>Enable Auto Brightness</label><br>"
         "<div id='brightness_range' style='margin-left: 20px; margin-top: 10px;'>"
         "<label for='min_brightness'>Min Brightness (0-15):</label>"
-        "<input type='number' id='min_brightness' name='min_brightness' min='0' max='15' value='" + String(displayConfig.min_brightness) + "' " + String(!displayConfig.auto_brightness ? "disabled" : "") + ">"
+        "<input type='number' id='min_brightness' name='min_brightness' min='0' max='15' value='" + String(displayConfig.min_brightness) + "'>"
         "<label for='max_brightness'>Max Brightness (0-15):</label>"
-        "<input type='number' id='max_brightness' name='max_brightness' min='0' max='15' value='" + String(displayConfig.max_brightness) + "' " + String(!displayConfig.auto_brightness ? "disabled" : "") + ">"
+        "<input type='number' id='max_brightness' name='max_brightness' min='0' max='15' value='" + String(displayConfig.max_brightness) + "'>"
         "</div>"
         "<div id='manual_brightness' style='margin-left: 20px; margin-top: 10px;'>"
         "<label for='man_brightness'>Manual Brightness (0-15):</label>"
@@ -709,26 +709,6 @@ void handleRoot() {
         "<input type='submit' value='Save Display Settings'>"
         "</form>";
     server.sendContent(brightnessChunk);
-
-    // Add JavaScript for immediate toggling of min, max, and manual brightness inputs
-    server.sendContent(
-        "<script>"
-        "document.addEventListener('DOMContentLoaded', function() {"
-        "  const autoBrightnessCheckbox = document.getElementById('auto_brightness');"
-        "  const minBrightnessInput = document.getElementById('min_brightness');"
-        "  const maxBrightnessInput = document.getElementById('max_brightness');"
-        "  const manualBrightnessInput = document.getElementById('man_brightness');"
-        "  function toggleBrightnessInputs() {"
-        "    const autoEnabled = autoBrightnessCheckbox.checked;"
-        "    minBrightnessInput.disabled = !autoEnabled;"
-        "    maxBrightnessInput.disabled = !autoEnabled;"
-        "    manualBrightnessInput.disabled = autoEnabled;"
-        "  }"
-        "  autoBrightnessCheckbox.addEventListener('change', toggleBrightnessInputs);"
-        "  toggleBrightnessInputs(); // Initialize on page load"
-        "});"
-        "</script>"
-    );
 
     // Send MQTT settings form
     String mqttChunk =
@@ -756,7 +736,7 @@ void handleRoot() {
 
     // Send footer and closing tags
     String footerChunk =
-        "<a href='/system' class='system-btn'>System Administration</a>"
+        "<a href='/system' >System Administration</a>"
         "<div class='footer'>"
         "<p>Designed by: Arjun Bhattacharjee (mymail.arjun@gmail.com)</p>"
         "</div>"
@@ -764,17 +744,22 @@ void handleRoot() {
         "</html>";
     server.sendContent(footerChunk);
 
-    // Add JavaScript for toggling manual brightness
+    // Consolidate and fix JavaScript for toggling brightness inputs
     server.sendContent(
         "<script>"
         "document.addEventListener('DOMContentLoaded', function() {"
         "  const autoBrightnessCheckbox = document.getElementById('auto_brightness');"
-        "  const manualBrightnessInput = document.getElementById('manual_brightness_value');"
-        "  function toggleManualBrightness() {"
-        "    manualBrightnessInput.disabled = autoBrightnessCheckbox.checked;"
+        "  const minBrightnessInput = document.getElementById('min_brightness');"
+        "  const maxBrightnessInput = document.getElementById('max_brightness');"
+        "  const manualBrightnessInput = document.getElementById('man_brightness');"
+        "  function toggleBrightnessInputs() {"
+        "    const autoEnabled = autoBrightnessCheckbox.checked;"
+        "    minBrightnessInput.disabled = !autoEnabled;"
+        "    maxBrightnessInput.disabled = !autoEnabled;"
+        "    manualBrightnessInput.disabled = autoEnabled;"
         "  }"
-        "  autoBrightnessCheckbox.addEventListener('change', toggleManualBrightness);"
-        "  toggleManualBrightness(); // Initialize on page load"
+        "  autoBrightnessCheckbox.addEventListener('change', toggleBrightnessInputs);"
+        "  toggleBrightnessInputs(); // Initialize on page load"
         "});"
         "</script>"
     );
@@ -1460,7 +1445,7 @@ void handleSystem() {
     </form>
 
     <!-- Back to Main Page -->
-    <a href='/' class='home-btn'>Back to Main Page</a>
+    <a href='/' >Back to Main Page</a>
 
     <div class='footer'>
         <p>Designed by: Arjun Bhattacharjee (mymail.arjun@gmail.com)</p>

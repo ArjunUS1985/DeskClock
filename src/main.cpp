@@ -20,7 +20,7 @@ uint8_t currentDisplay = 0;  // 0 = time, 1 = date, 2 = temp, 3 = humidity
 
 #define LDR_PIN A0  // Analog pin for LDR
 #define BRIGHTNESS_CHECK_INTERVAL 1000  // Check brightness every 1 second
-#define MIN_ANALOG_VALUE 10    // Minimum analog reading (darkness)
+#define MIN_ANALOG_VALUE 1    // Minimum analog reading (darkness)
 #define MAX_ANALOG_VALUE 1024 // Maximum analog reading (brightness)
 #define MIN_INTENSITY -2       // Minimum display intensity
 #define MAX_INTENSITY 15       // Reduced maximum intensity for better night viewing
@@ -28,7 +28,7 @@ uint8_t currentDisplay = 0;  // 0 = time, 1 = date, 2 = temp, 3 = humidity
 
 // Global variables for brightness control
 static float currentIntensity = 0;  // Current smoothed intensity value
-static uint8_t lastSetIntensity = -1; // Last intensity value actually set to displays
+static uint8_t lastSetIntensity = 0; // Last intensity value actually set to displays
 
 // Create a sequence of what to display based on user settings
 uint8_t displaySequence[4];  // Will hold sequence of valid displays
@@ -165,7 +165,7 @@ void setupTime() {
     // Try NTP sync first
     configTime(timeConfig.timezone_offset, 0, "pool.ntp.org", "time.nist.gov");
     printBothf("Setting up time with timezone %s (offset: %d seconds)", timeConfig.timezone_name, timeConfig.timezone_offset);
-    displaySetupMessage("Time sync...");
+   // displaySetupMessage("Time sync...");
 
     // Add timeout for NTP sync (30 seconds)
     unsigned long startAttempt = millis();
@@ -185,7 +185,7 @@ void setupTime() {
 
     if (syncSuccess) {
         printBoth("\nTime synchronized via NTP");
-        displaySetupMessage("Done!");
+        displaySetupMessage("Time Synced!");
         lastTimeSync = time(nullptr);
     } else {
         printBoth("\nNTP sync failed - Please set time manually");
@@ -212,71 +212,67 @@ void syncTimeIfNeeded() {
     }
 }
 
+// Update the brightness method to include a check for auto brightness
 void updateBrightness() {
-  int mappedBrightness = displayConfig.man_brightness; // Default to max brightness
-    if (displayConfig.auto_brightness) {
-        // Read the LDR value
-        int ldrValue = analogRead(LDR_PIN);
-       
-        // Print LDR value for debugging
-        printBoth(("LDR Value: " + String(ldrValue)).c_str());
-        int mappedBrightness = map(ldrValue, MIN_ANALOG_VALUE, MAX_ANALOG_VALUE, 
-          displayConfig.max_brightness, displayConfig.min_brightness);
-          printBoth(("LDR Mapped: " +String(mappedBrightness)).c_str());
-// Map LDR value to the user-configured brightness range
-        
+    if (!displayConfig.auto_brightness) {
+        // If auto brightness is disabled, set manual brightness and return
+        myDisplay.setIntensity(displayConfig.man_brightness);
+        timeDisplay.setIntensity(displayConfig.man_brightness);
+        return;
+    }
+  
+    static int ldrValues[10] = {0}; // Array to store LDR values for the last 10 seconds
+    static int currentIndex = 0;    // Current index in the array
+    static unsigned long lastUpdateTime = 0; // Last time the brightness was updated
+    static int targetBrightness = 0; // Target brightness to gradually reach
 
-        // Constrain the         brightness to valid range
-        mappedBrightness = constrain(mappedBrightness, displayConfig.min_brightness, displayConfig.max_brightness);
-        
-        // Apply smoothing to avoid sudden changes
-      
-        
-        // Only update if the intensity has changed
-        if (abs(mappedBrightness - lastSetIntensity) > 1) {
-            lastSetIntensity = mappedBrightness;
-          
-           
-           // timeDisplay.displaySuspend(true);
-            //timeDisplay.displayShutdown
-           /*  while (!timeDisplay.displayAnimate() ) {
-              delay(10); // Small delay to ensure smooth animation
-          }
-            
-           while (!myDisplay.displayAnimate() && !timeDisplay.displayAnimate()) {
-            delay(10); // Small delay to ensure smooth animation
-        } */
-//myDisplay.displayReset();
-       
-        myDisplay.setIntensity(mappedBrightness); 
-
-        //myDisplay.setIntensity(mappedBrightness);
-        timeDisplay.setIntensity(mappedBrightness);
-
-        printBoth(String(mappedBrightness).c_str());
-        //myDisplay.displaySuspend(true);
-        //timeDisplay.displaySuspend(true);
-       
-        /*  while (!myDisplay.displayAnimate() ) {
-           delay(10); // Small delay to ensure smooth animation
-       } */
-        // timeDisplay.displayReset();
-         
-         //delay(100);
-         //myDisplay.displaySuspend(false);
-         //timeDisplay.displaySuspend(false);
-       //     teilmseeD{}i
-      
-
+    // Initialize the ldrValues array with the first LDR reading to avoid unassigned values affecting the average
+    static bool isInitialized = false;
+    if (!isInitialized) {
+        int initialLdrValue = analogRead(LDR_PIN);
+        for (int i = 0; i < 10; i++) {
+            ldrValues[i] = initialLdrValue;
         }
-    }else{
-      if (abs(mappedBrightness - lastSetIntensity) > 0) {
-        lastSetIntensity = mappedBrightness;
-        myDisplay.setIntensity(mappedBrightness); 
+        isInitialized = true;
+    }
 
-        //myDisplay.setIntensity(mappedBrightness);
-        timeDisplay.setIntensity(mappedBrightness);
-      }
+    // Read the LDR value
+    int ldrValue = analogRead(LDR_PIN);
+    ldrValues[currentIndex] = ldrValue;
+    currentIndex = (currentIndex + 1) % 10; // Move to the next index, wrap around after 10
+
+    // Calculate the running average of the last 10 seconds
+    int sum = 0;
+    for (int i = 0; i < 10; i++) {
+        sum += ldrValues[i];
+    }
+    int averageLdrValue = sum / 10;
+
+    // Adjust the mapping to allow brightness to reach 0 when LDR value is at its maximum
+    targetBrightness = map(averageLdrValue, MIN_ANALOG_VALUE, MAX_ANALOG_VALUE, 
+                           displayConfig.max_brightness, displayConfig.min_brightness - 1);
+    targetBrightness = constrain(targetBrightness, displayConfig.min_brightness - 1, displayConfig.max_brightness);
+
+   
+    
+
+    // Gradually change the brightness over 3 seconds
+    if (millis() - lastUpdateTime >= 300) { // Update every 300ms (3 seconds / 10 steps)
+        if (telnetClient && telnetClient.connected()) {
+            telnetClient.print("check 3 sec ");
+            telnetClient.println(lastSetIntensity);
+        }
+        if (abs(targetBrightness - lastSetIntensity) > 0) {
+            if (targetBrightness > lastSetIntensity) {
+                lastSetIntensity++;
+            } else if (targetBrightness < lastSetIntensity) {
+                lastSetIntensity--;
+            }
+         
+            myDisplay.setIntensity(lastSetIntensity);
+            timeDisplay.setIntensity(lastSetIntensity);
+        }
+        lastUpdateTime = millis();
     }
 }
 
@@ -287,6 +283,8 @@ bool isFeatureEnabled(uint8_t bitPosition) {
     if (bitPosition >= MAX_COMMAND_LENGTH) return false;
     return (systemCommandConfig.command[bitPosition] == '1');
 }
+
+
 
 void setup() {
     // Initialize Serial Monitor
@@ -339,7 +337,7 @@ void setup() {
     }
 
     // Check for reset button press
-    checkResetButton();
+    //checkResetButton();
 
     // Display message if WiFi is not connected and AP mode is starting
     displaySetupMessage("Connecting to wifi...");
@@ -423,7 +421,7 @@ void setup() {
    }
 }
 
-  
+  //lastSetIntensity=-1;
 }
 
 void loop() {
@@ -497,6 +495,8 @@ void loop() {
 
     // Update display based on sequence
     if (currentMillis - lastDisplayChange >= (displayDurations[currentDisplay] * 1000)) {
+          // Check WiFi connectivity and display CUT WiFi sign if disconnected
+         
         if (numDisplays > 0) {  // Only change display if we have items to show
             currentDisplay = (currentDisplay + 1) % numDisplays;
             lastDisplayChange = currentMillis;
@@ -536,11 +536,24 @@ void loop() {
                    while (!myDisplay.displayAnimate()) {
                         delay(10);
                    }
+                   if (WiFi.status() != WL_CONNECTED) {
+                    delay(2000); // Wait for 1 second before checking again
+                    myDisplay.displayClear();
+                    myDisplay.displayText("WIFI X", PA_CENTER, 25, 0, PA_NO_EFFECT, PA_NO_EFFECT);
+                    while (!myDisplay.displayAnimate()) {
+                        delay(10);
+                    }
+                    
+                }
+
+                  
                     break;
                 }
             }
         }
     }
+
+
 
    
 

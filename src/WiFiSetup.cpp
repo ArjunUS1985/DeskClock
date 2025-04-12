@@ -112,7 +112,7 @@ void setupWiFi() {
     }
     
     // Final message to indicate we're done with setup
-    displaySetupMessage("Ready!");
+  //  displaySetupMessage("Ready!");
 }
 
 void resetWiFiSettings() {
@@ -653,6 +653,22 @@ void handleRoot() {
         "}"
         "}"
         "}"
+
+        "document.addEventListener('DOMContentLoaded', function() {"
+        "  const autoBrightnessCheckbox = document.getElementById('auto_brightness');"
+        "  const minBrightnessInput = document.getElementById('min_brightness');"
+        "  const maxBrightnessInput = document.getElementById('max_brightness');"
+        "  const manualBrightnessInput = document.getElementById('man_brightness');"
+        "  function toggleBrightnessInputs() {"
+        "    const autoEnabled = autoBrightnessCheckbox.checked;"
+        "    minBrightnessInput.disabled = !autoEnabled;"
+        "    maxBrightnessInput.disabled = !autoEnabled;"
+        "    manualBrightnessInput.disabled = autoEnabled;"
+        "  }"
+        "  autoBrightnessCheckbox.addEventListener('change', toggleBrightnessInputs);"
+        "  toggleBrightnessInputs(); // Initialize on page load"
+        "});"
+
         "</script>"
         "</head>"
         "<body>"
@@ -709,6 +725,7 @@ void handleRoot() {
         "<input type='submit' value='Save Display Settings'>"
         "</form>";
     server.sendContent(brightnessChunk);
+ // Consolidate and fix JavaScript for toggling brightness inputs
 
     // Send MQTT settings form
     String mqttChunk =
@@ -744,25 +761,7 @@ void handleRoot() {
         "</html>";
     server.sendContent(footerChunk);
 
-    // Consolidate and fix JavaScript for toggling brightness inputs
-    server.sendContent(
-        "<script>"
-        "document.addEventListener('DOMContentLoaded', function() {"
-        "  const autoBrightnessCheckbox = document.getElementById('auto_brightness');"
-        "  const minBrightnessInput = document.getElementById('min_brightness');"
-        "  const maxBrightnessInput = document.getElementById('max_brightness');"
-        "  const manualBrightnessInput = document.getElementById('man_brightness');"
-        "  function toggleBrightnessInputs() {"
-        "    const autoEnabled = autoBrightnessCheckbox.checked;"
-        "    minBrightnessInput.disabled = !autoEnabled;"
-        "    maxBrightnessInput.disabled = !autoEnabled;"
-        "    manualBrightnessInput.disabled = autoEnabled;"
-        "  }"
-        "  autoBrightnessCheckbox.addEventListener('change', toggleBrightnessInputs);"
-        "  toggleBrightnessInputs(); // Initialize on page load"
-        "});"
-        "</script>"
-    );
+   
 
     // End chunked response
     server.sendContent("");

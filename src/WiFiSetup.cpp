@@ -793,6 +793,29 @@ void handleRoot() {
         "</script>";
     server.sendContent(dateTimeForm);
 
+    // Add fields for date_duration, temp_duration, and humidity_duration to the config page
+    String durationFields =
+        "<form action='/save' method='POST'>"
+        "<h2>Display Durations</h2>"
+        "<div class='form-group'>"
+        "<label for='date_duration'>Date Duration (seconds):</label>"
+        "<input type='number' id='date_duration' name='date_duration' min='0' max='60' value='" + String(displayConfig.date_duration) + "'>"
+        "<small style='display: block; margin-top: 5px; color: #666;'>Set to 0 to disable date display</small>"
+        "</div>"
+        "<div class='form-group'>"
+        "<label for='temp_duration'>Temperature Duration (seconds):</label>"
+        "<input type='number' id='temp_duration' name='temp_duration' min='0' max='60' value='" + String(displayConfig.temp_duration) + "'>"
+        "<small style='display: block; margin-top: 5px; color: #666;'>Set to 0 to disable temperature display</small>"
+        "</div>"
+        "<div class='form-group'>"
+        "<label for='humidity_duration'>Humidity Duration (seconds):</label>"
+        "<input type='number' id='humidity_duration' name='humidity_duration' min='0' max='60' value='" + String(displayConfig.humidity_duration) + "'>"
+        "<small style='display: block; margin-top: 5px; color: #666;'>Set to 0 to disable humidity display</small>"
+        "</div>"
+        "<input type='submit' value='Save Durations'>"
+        "</form>";
+    server.sendContent(durationFields);
+
     // Send footer and closing tags
     String footerChunk =
         "<br/><a href='/system' >System Administration</a>"
@@ -890,6 +913,7 @@ void handleSave() {
     
     if (displayChanged) {
         saveDisplayConfig();
+        
         configChanged = true;
         printBoth("Display settings saved");
         printBothf("Auto brightness: %s, Min: %d, Max: %d, Manual: %d", 

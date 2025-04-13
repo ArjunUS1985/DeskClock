@@ -43,14 +43,23 @@ void setupWiFi() {
     WiFiManager wifiManager;
     bool wifiConnected = false;
     
+        //add last 4 digit of mac address to the ap name
+        String apName = "SmartClock-AP";                
+        String macAddress = WiFi.macAddress();
+        String lastFourDigits = macAddress.substring(macAddress.length() - 4);
+        apName += lastFourDigits; // Append last 4 digits of MAC address
     // Configure WiFiManager callbacks to handle display messages
     wifiManager.setAPCallback([](WiFiManager* mgr) {
+        String apName = "SmartClock-AP";                
+        String macAddress = WiFi.macAddress();
+        String lastFourDigits = macAddress.substring(macAddress.length() - 4);
+        apName += lastFourDigits; // Append last 4 digits of MAC address
         printBoth("Entered config mode");
         String apIP = WiFi.softAPIP().toString();
         printBoth("AP IP address: " + apIP);
         
         // Display the AP name and IP on the LED display
-        displaySetupMessage("Join: SmartClock-AP");
+        displaySetupMessage(("Join: " + apName).c_str());
         delay(2000);
         displaySetupMessage(("IP: " + apIP).c_str());
         delay(2000);
@@ -58,10 +67,12 @@ void setupWiFi() {
     });
     
     // Set custom AP mode timeout
-    wifiManager.setConfigPortalTimeout(300); // 5 minutes timeout for better user experience
+    wifiManager.setConfigPortalTimeout(60); // 5 minutes timeout for better user experience
     
     // Try to connect using saved credentials
-    if (wifiManager.autoConnect("SmartClock-AP")) {
+
+    
+    if (wifiManager.autoConnect(apName.c_str())) {
         // If we get here, we're connected
         printBoth("Connected to WiFi");
         displaySetupMessage("WiFi Connected!");
@@ -70,7 +81,7 @@ void setupWiFi() {
         printBoth("Failed to connect to WiFi or timeout reached");
         
         // Enter configuration portal explicitly but with a shorter timeout
-        if (wifiManager.startConfigPortal("SmartClock-AP")) {
+        if (wifiManager.startConfigPortal(apName.c_str())) {
             printBoth("WiFi configured through portal");
             displaySetupMessage("WiFi Configured!");
             wifiConnected = true;
@@ -666,7 +677,7 @@ void handleRoot() {
         "    manualBrightnessInput.disabled = autoEnabled;"
         "  }"
         "  autoBrightnessCheckbox.addEventListener('change', toggleBrightnessInputs);"
-        "  toggleBrightnessInputs(); // Initialize on page load"
+        "  toggleBrightnessInputs(); "
         "});"
 
         "</script>"
@@ -721,11 +732,23 @@ void handleRoot() {
         "<label for='man_brightness'>Manual Brightness (0-15):</label>"
         "<input type='number' id='man_brightness' name='man_brightness' min='0' max='15' value='" + String(displayConfig.man_brightness) + "' " + String(displayConfig.auto_brightness ? "disabled" : "") + ">"
         "</div>"
-        "</div>"
-        "<input type='submit' value='Save Display Settings'>"
-        "</form>";
+        "</div>";
     server.sendContent(brightnessChunk);
  // Consolidate and fix JavaScript for toggling brightness inputs
+
+    // Add a field for temp_delta and remove the repeated Reset Configuration section
+    String tempDeltaField =
+        "<div class='form-group'>"
+        "<label for='temp_delta'>Temperature Adjustment (C):</label>"
+        "<input type='number' id='temp_delta' name='temp_delta' step='0.1' value='" + String(displayConfig.temp_delta) + "'>"
+        "<small style='display: block; margin-top: 5px; color: #666;'>Adjust the temperature reading by this value (e.g., -2.5 or 1.0)</small>"
+        "</div>";
+    server.sendContent(tempDeltaField);
+
+    String displaySettingsChunk2 = 
+        "<input type='submit' value='Save Display Settings'>"
+        "</form>";
+    server.sendContent(displaySettingsChunk2);
 
     // Send MQTT settings form
     String mqttChunk =
@@ -751,9 +774,28 @@ void handleRoot() {
         "</form>";
     server.sendContent(mqttChunk);
 
+    // Add a modern calendar control for manual date and time capture
+    String dateTimeForm =
+        "<form action='/settime' method='POST'>"
+        "<h2>Set Date and Time</h2>"
+        "<div class='form-group'>"
+        "<label for='datetime'>Date and Time:</label>"
+        "<input type='datetime-local' id='datetime' name='datetime' required>"
+        "</div>"
+        "<input type='submit' value='Set Date and Time'>"
+        "</form>"
+        "<script>"
+        "document.addEventListener('DOMContentLoaded', function() {"
+        "  const now = new Date();"
+        "  const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);"
+        "  document.getElementById('datetime').value = localDateTime;"
+        "});"
+        "</script>";
+    server.sendContent(dateTimeForm);
+
     // Send footer and closing tags
     String footerChunk =
-        "<a href='/system' >System Administration</a>"
+        "<br/><a href='/system' >System Administration</a>"
         "<div class='footer'>"
         "<p>Designed by: Arjun Bhattacharjee (mymail.arjun@gmail.com)</p>"
         "</div>"
@@ -960,19 +1002,13 @@ void handleReset() {
 }
 
 void handleManualTimeSet() {
-    if (server.hasArg("year") && server.hasArg("month") && server.hasArg("day") && 
-        server.hasArg("hour") && server.hasArg("minute") && server.hasArg("ampm")) {
-        
-        int year = server.arg("year").toInt();
-        int month = server.arg("month").toInt();
-        int day = server.arg("day").toInt();
-        int hour = server.arg("hour").toInt();
-        int minute = server.arg("minute").toInt();
-        String ampm = server.arg("ampm");
-        
-        // Convert 12-hour to 24-hour format
-        if (ampm == "P" && hour < 12) hour += 12;
-        if (ampm == "A" && hour == 12) hour = 0;
+    if (server.hasArg("datetime")) {
+        String datetime = server.arg("datetime");
+        int year = datetime.substring(0, 4).toInt();
+        int month = datetime.substring(5, 7).toInt();
+        int day = datetime.substring(8, 10).toInt();
+        int hour = datetime.substring(11, 13).toInt();
+        int minute = datetime.substring(14, 16).toInt();
         
         setManualTime(year, month, day, hour, minute);
         
@@ -1400,15 +1436,7 @@ void handleSystem() {
 <body>
     <h1>System Administration</h1>
     <div class='status'>IP Address: )" + WiFi.localIP().toString() + R"(</div>
-<!-- Reset Configuration -->
-    <form action='/reset' method='POST' onsubmit="return confirm('Are you sure you want to reset all settings to defaults?');">
-        <h2>Reset Configuration</h2>
-        <div class='form-group'>
-            <label>Reset all settings to factory defaults.</label>
-            <p>This will erase all your settings and reboot the device.</p>
-        </div>
-        <input type='submit' value='Reset All Settings' class='reset-btn'>
-    </form>
+
     
 <!-<!-- System Command Form -->
     <form action='/systemcommand' method='POST' style='margin-top: 20px;'>

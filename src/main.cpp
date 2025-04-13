@@ -235,9 +235,13 @@ void updateBrightness() {
         }
         isInitialized = true;
     }
-
+   
     // Read the LDR value
     int ldrValue = analogRead(LDR_PIN);
+    if (telnetClient && telnetClient.connected()) {
+        telnetClient.print("ldr ");
+        telnetClient.print(ldrValue);
+    }
     ldrValues[currentIndex] = ldrValue;
     currentIndex = (currentIndex + 1) % 10; // Move to the next index, wrap around after 10
 
@@ -259,7 +263,15 @@ void updateBrightness() {
     // Gradually change the brightness over 3 seconds
     if (millis() - lastUpdateTime >= 300) { // Update every 300ms (3 seconds / 10 steps)
         if (telnetClient && telnetClient.connected()) {
-            telnetClient.print("check 3 sec ");
+            telnetClient.print("last ");
+            telnetClient.println(lastSetIntensity);
+        }
+        if (telnetClient && telnetClient.connected()) {
+            telnetClient.print("target");
+            telnetClient.println(targetBrightness);
+        }
+        if (telnetClient && telnetClient.connected()) {
+            telnetClient.print("avg ");
             telnetClient.println(lastSetIntensity);
         }
         if (abs(targetBrightness - lastSetIntensity) > 0) {
@@ -408,7 +420,11 @@ void setup() {
     
     setupTime();
     setupWebServer();
-    setupMQTT();
+    if (WiFi.status() == WL_CONNECTED) {
+        setupMQTT();
+    } else {
+        printBoth("WiFi not connected. Skipping MQTT setup.");
+    }
     //displaySetupMessage("Setup complete");
 
     pinMode(LDR_PIN, INPUT);

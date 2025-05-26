@@ -688,8 +688,12 @@ void handleRoot() {
         "<h1>Device Configuration</h1>"
     );
 
-    // Send device status chunk
-    String statusChunk = "<div class='status'>IP Address: " + WiFi.localIP().toString() + "</div>";
+    // Send device status chunk with both IP and MAC address, with improved styling
+    String macAddress = WiFi.macAddress();
+    String statusChunk = "<div class='status'>"
+        "<p><strong>IP Address:</strong> " + WiFi.localIP().toString() + "</p>"
+        "<p><strong>MAC Address:</strong> " + macAddress + "</p>"
+        "</div>";
     server.sendContent(statusChunk);
 
     // Send device settings form

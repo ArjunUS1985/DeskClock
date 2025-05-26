@@ -11,13 +11,14 @@
 #include <ESP8266WebServer.h>
 #include "WiFiSetup.h"
 #include <time.h>
+#include <ESP8266HTTPClient.h>
 
 // Global variables
 time_t lastTimeSync = 0;               // Track last sync time
 unsigned long lastDisplayChange = 0;   // Track when display was last changed
 unsigned long lastBrightnessCheck = 0; // Track when brightness was last updated
 uint8_t currentDisplay = 0;            // 0 = time, 1 = date, 2 = temp, 3 = humidity
-
+bool unableToSetTime = false; // Flag to indicate if manual time was set
 #define LDR_PIN A0                     // Analog pin for LDR
 #define BRIGHTNESS_CHECK_INTERVAL 1000 // Check brightness every 1 second
 #define MIN_ANALOG_VALUE 1             // Minimum analog reading (darkness)
@@ -216,6 +217,7 @@ void setupTime()
         {
             // Set to 2024-01-01 00:00:00 as fallback
             setManualTime(2024, 1, 1, 0, 0);
+            unableToSetTime = true; // Flag to indicate manual time was set
         }
     }
 }
@@ -399,6 +401,7 @@ void setup()
     // Connect to Wi-Fi
     setupWiFi();
 
+
     // Initialize Telnet server
     setupTelnet();
 
@@ -462,8 +465,29 @@ void setup()
     setupWebServer();
     if (WiFi.status() == WL_CONNECTED)
     {
-        setupMQTT();
+
+    // Send the IP address to ntfy.sh with the device's MAC address
+    String macAddress = WiFi.macAddress();
+    macAddress.replace(":", ""); // Remove colons from MAC address
+    String ntfyUrl = "http://ntfy.sh/" + macAddress;
+    String message = String(deviceConfig.hostname) + " connected as IP: " + WiFi.localIP().toString();
+    
+    static WiFiClient wifiClient;  // Make it static so it persists
+    HTTPClient http;
+    if (http.begin(wifiClient, ntfyUrl)) {  // Check if begin was successful
+        http.addHeader("Content-Type", "text/plain");
+        int httpResponseCode = http.POST(message);
+        if (httpResponseCode > 0) {
+            Serial.printf("Message sent to ntfy.sh with response code: %d\n", httpResponseCode);
+        } else {
+            Serial.printf("Failed to send message to ntfy.sh. Error: %s\n", http.errorToString(httpResponseCode).c_str());
+        }
+        http.end();
+    } else {
+        Serial.println("Failed to begin HTTP client");
     }
+        setupMQTT();
+}
     else
     {
         printBoth("WiFi not connected. Skipping MQTT setup.");
@@ -648,5 +672,24 @@ void loop()
             }
         }
         lastWiFiCheckTime = millis(); // Update the last check time
+    }
+
+    // Add logic to check unableToSetTime and call retryWiFiSetup every 1 minute
+    static unsigned long lastTimeCheck = 0;
+    if (millis() - lastTimeCheck >= 600000)
+    { // Check every 1 minute
+        if (unableToSetTime)
+        {
+//check if date is 01-01-2024
+            time_t now = time(nullptr);
+            struct tm *timeinfo = localtime(&now);
+            if (timeinfo->tm_year == 124 && timeinfo->tm_mon == 0 && timeinfo->tm_mday == 1)
+            {
+                //reset esp
+                ESP.restart();
+
+            }
+        }
+        lastTimeCheck = millis(); // Update the last check time
     }
 }

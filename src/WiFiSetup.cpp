@@ -76,6 +76,7 @@ void setupWiFi() {
         // If we get here, we're connected
         printBoth("Connected to WiFi");
         displaySetupMessage("WiFi Connected!");
+
         wifiConnected = true;
     } else {
         printBoth("Failed to connect to WiFi or timeout reached");
@@ -120,6 +121,7 @@ void setupWiFi() {
     } else {
         // Set a flag or take actions for offline mode
         printBoth("Running in offline mode");
+        
     }
     
     // Final message to indicate we're done with setup
